@@ -610,8 +610,33 @@
 	vddp-ref-clk-always-on;
 };
 
+&usb3 {
+	status = "okay";
+
+	/* Operate "GCC_USB30_MASTER_CLK" in HS mode (>=60 MHz) */
+	assigned-clock-rates = <19200000>, <60000000>;
+
+	/* Disable USB3 pipe_clk requirement */
+	qcom,select-utmi-as-pipe-clk;
+};
+
 &usb3_dwc3 {
-	status = "disabled";
+	/* Drop USB 3 SuperSpeed PHY to bring up the "usb0" interface */
+	phys = <&qusb2phy>;
+	phy-names = "usb2-phy";
+
+	/* We can only operate at USB 2.0 speeds */
+	maximum-speed = "high-speed";
+
+	/* Force to peripheral until we have Type-C hooked up */
+	dr_mode = "peripheral";
+};
+
+&qusb2phy {
+	status = "okay";
+
+	vdda-pll-supply = <&vreg_l12a_1p8>;
+	vdda-phy-dpdm-supply = <&vreg_l24a_3p075>;
 };
 
 &wifi {
