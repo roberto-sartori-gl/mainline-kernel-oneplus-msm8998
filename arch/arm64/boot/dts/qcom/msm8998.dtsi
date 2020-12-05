@@ -1775,7 +1775,6 @@
 				<&gpucc RBCPR_CLK>,
 				<&gpucc GFX3D_ISENSE_CLK>,
 				<&gpucc GFX3D_CLK>;
-
 			clock-names = "iface",
 				"rbbmtimer",
 				"mem",
@@ -1783,10 +1782,12 @@
 				"rbcpr",
 				"core";
 
-			power-domains = <&rpmpd MSM8998_VDDMX>;
+			interrupts = <0 300 IRQ_TYPE_LEVEL_HIGH>;
 			iommus = <&adreno_smmu 0>;
-
 			operating-points-v2 = <&gpu_opp_table>;
+			power-domains = <&rpmpd MSM8998_VDDMX>;
+			#stream-id-cells = <16>;
+			status = "disabled";
 
 			gpu_opp_table: opp-table {
 				compatible  = "operating-points-v2";
@@ -1794,42 +1795,49 @@
 					opp-hz = /bits/ 64 <710000000>;
 					opp-level = <RPM_SMD_LEVEL_TURBO>;
 					opp-peak-kBps = <14432000>;
+					opp-supported-hw = <0xFF>;
 				};
 
 				opp-670000000 {
 					opp-hz = /bits/ 64 <670000000>;
 					opp-level = <RPM_SMD_LEVEL_NOM_PLUS>;
 					opp-peak-kBps = <13436000>;
+					opp-supported-hw = <0xFF>;
 				};
 
 				opp-596000000 {
 					opp-hz = /bits/ 64 <596000000>;
 					opp-level = <RPM_SMD_LEVEL_NOM>;
 					opp-peak-kBps = <12440000>;
+					opp-supported-hw = <0xFF>;
 				};
 
 				opp-515000000 {
 					opp-hz = /bits/ 64 <515000000>;
 					opp-level = <RPM_SMD_LEVEL_SVS_PLUS>;
 					opp-peak-kBps = <10368000>;
+					opp-supported-hw = <0xFF>;
 				};
 
 				opp-414000000 {
 					opp-hz = /bits/ 64 <414000000>;
 					opp-level = <RPM_SMD_LEVEL_SVS>;
 					opp-peak-kBps = <8136000>;
+					opp-supported-hw = <0xFF>;
 				};
 
 				opp-342000000 {
 					opp-hz = /bits/ 64 <342000000>;
 					opp-level = <RPM_SMD_LEVEL_LOW_SVS>;
 					opp-peak-kBps = <6144000>;
+					opp-supported-hw = <0xFF>;
 				};
 
 				opp-257000000 {
 					opp-hz = /bits/ 64 <257000000>;
 					opp-level = <RPM_SMD_LEVEL_MIN_SVS>;
 					opp-peak-kBps = <3296000>;
+					opp-supported-hw = <0xFF>;
 				};
 			};
 		};
@@ -1837,10 +1845,19 @@
 		adreno_smmu: iommu@5040000 {
 			compatible = "qcom,msm8998-smmu-v2", "qcom,smmu-v2";
 			reg = <0x05040000 0x10000>;
-			#iommu-cells = <1>;
+			clocks = <&gcc GCC_GPU_CFG_AHB_CLK>,
+				 <&gcc GCC_BIMC_GFX_CLK>,
+				 <&gcc GCC_GPU_BIMC_GFX_CLK>;
+			clock-names = "iface", "mem", "mem_iface";
 
+			#global-interrupts = <0>;
+			#iommu-cells = <1>;
+			interrupts =
+				<GIC_SPI 329 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 330 IRQ_TYPE_LEVEL_HIGH>,
+				<GIC_SPI 331 IRQ_TYPE_LEVEL_HIGH>;
 			/*
-			 * HACK: GPU-GX GDSC parent is GPU-CX. We need to bring up
+			 * GPU-GX GDSC's parent is GPU-CX. We need to bring up the
 			 * GPU-CX for SMMU but we need both of them up for Adreno.
 			 * Contemporarily, we also need to manage the VDDMX rpmpd
 			 * domain in the Adreno driver.
@@ -1848,16 +1865,7 @@
 			 * SoC VDDMX RPM Power Domain in the Adreno driver.
 			 */
 			power-domains = <&gpucc GPU_GX_GDSC>;
-			clocks = <&gcc GCC_GPU_CFG_AHB_CLK>,
-				 <&gcc GCC_BIMC_GFX_CLK>,
-				 <&gcc GCC_GPU_BIMC_GFX_CLK>;
-			clock-names = "iface", "mem", "mem_iface";
-
-			#global-interrupts = <0>;
-			interrupts =
-				<GIC_SPI 329 IRQ_TYPE_LEVEL_HIGH>,
-				<GIC_SPI 330 IRQ_TYPE_LEVEL_HIGH>,
-				<GIC_SPI 331 IRQ_TYPE_LEVEL_HIGH>;
+			status = "disabled";
 		};
 
 		gpucc: clock-controller@5065000 {
