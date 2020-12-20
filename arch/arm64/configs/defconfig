@@ -485,5 +485,5 @@ CONFIG_SECURITY_SELINUX=y
 #CONFIG_SECURITY_SELINUX_BOOTPARAM=y
 #CONFIG_SECURITY_SELINUX_BOOTPARAM_VALUE=1
 CONFIG_SECURITY_NETWORK=y
-CONFIG_CMDLINE="selinux=disable selinux=permissive androidboot.selinux=permissive"
+CONFIG_CMDLINE="selinux=disable selinux=permissive androidboot.selinux=permissive firmware_class.path=/vendor/firmware/"
 CONFIG_CMDLINE_EXTEND=y
