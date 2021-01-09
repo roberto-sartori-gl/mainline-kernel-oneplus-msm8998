@@ -659,17 +659,12 @@ static const struct dpu_dspp_sub_blks sc7180_dspp_sblk = {
 		.len = 0x90, .version = 0x10000},
 };
 
-static const struct dpu_dspp_sub_blks sm8150_dspp_sblk = {
-	.pcc = {.id = DPU_DSPP_PCC, .base = 0x1700,
-		.len = 0x90, .version = 0x40000},
-};
-
-#define DSPP_BLK(_name, _id, _base, _sblk) \
+#define DSPP_BLK(_name, _id, _base, _mask, _desc) \
 		{\
 		.name = _name, .id = _id, \
 		.base = _base, .len = 0x1800, \
-		.features = DSPP_SC7180_MASK, \
-		.sblk = _sblk \
+		.features = _mask, \
+		.sblk = _desc \
 		}
 
 static const struct dpu_dspp_cfg msm8998_dspp[] = {
@@ -678,14 +673,8 @@ static const struct dpu_dspp_cfg msm8998_dspp[] = {
 };
 
 static const struct dpu_dspp_cfg sc7180_dspp[] = {
-	DSPP_BLK("dspp_0", DSPP_0, 0x54000, &sc7180_dspp_sblk),
-};
-
-static const struct dpu_dspp_cfg sm8150_dspp[] = {
-	DSPP_BLK("dspp_0", DSPP_0, 0x54000, &sm8150_dspp_sblk),
-	DSPP_BLK("dspp_1", DSPP_1, 0x56000, &sm8150_dspp_sblk),
-	DSPP_BLK("dspp_2", DSPP_2, 0x58000, &sm8150_dspp_sblk),
-	DSPP_BLK("dspp_3", DSPP_3, 0x5a000, &sm8150_dspp_sblk),
+	DSPP_BLK("dspp_0", DSPP_0, 0x54000, DSPP_SC7180_MASK,
+		 &sc7180_dspp_sblk),
 };
 
 /*************************************************************
