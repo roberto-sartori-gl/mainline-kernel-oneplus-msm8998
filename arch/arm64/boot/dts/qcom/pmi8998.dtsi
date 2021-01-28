@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <dt-bindings/input/qcom,pmi8998-haptics.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/spmi/spmi.h>
 
@@ -36,6 +37,28 @@
 			lab: lab {
 				interrupts = <0x3 0xde 0x0 IRQ_TYPE_EDGE_RISING>;
 			};
+		};
+
+		pmi8998_haptics: qcom,haptics@c000 {
+			//compatible = "qcom,qpnp-haptics";
+			compatible = "qcom,qpnp-haptics-buffer";
+			reg = <0xc000 0x100>;
+			status = "okay";
+
+			interrupts = <0x3 0xc0 0x0 IRQ_TYPE_EDGE_BOTH>,
+				     <0x3 0xc0 0x1 IRQ_TYPE_EDGE_BOTH>;
+			interrupt-names = "hap-sc-irq", "hap-play-irq";
+
+			qcom,actuator-type = <HAP_TYPE_LRA>;
+
+			//qcom,play-mode = "direct";
+
+			qcom,wave-shape = <HAP_WAVE_SINE>;
+			qcom,play-mode = <HAP_PLAY_BUFFER>;
+			qcom,brake-pattern = <0x3 0x3 0x3 0x3>;
+			qcom,vmax-mv = <3596>;
+			qcom,wave-play-rate-us = <4255>; // 1/4255us = 235.017626322 Hz - for OnePlus 6
+			qcom,lra-res-cal-period = <32>;
 		};
 	};
 };
