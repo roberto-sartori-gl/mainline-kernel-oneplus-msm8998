@@ -224,8 +224,6 @@ static int pmi8998_haptics_write(struct pmi8998_haptics *haptics, u16 addr, u8 *
 {
 	int ret, i;
 
-	pr_debug("%s: writing 0x%x to 0x%x", __func__, *val, addr);
-
 	if (is_secure_addr(addr)) {
 		for (i = 0; i < len; i++) {
 			pr_info("%s: unlocking for addr: 0x%x, val: 0x%x", __func__, addr, val[i]);
@@ -261,8 +259,6 @@ static int pmi8998_haptics_write_masked(struct pmi8998_haptics *haptics, u16 add
 {
 	int ret;
 
-	// pr_info("%s: writing 0x%x to 0x%x with mask 0x%x", __func__, val, addr, mask);
-
 	if (is_secure_addr(addr)) {
 		ret = regmap_write(haptics->regmap,
 			HAP_SEC_ACCESS_REG(haptics), HAP_SEC_ACCESS_UNLOCK);
@@ -283,7 +279,6 @@ static int pmi8998_haptics_write_masked(struct pmi8998_haptics *haptics, u16 add
 #define HAP_CYCLES	4
 static bool is_haptics_idle(struct pmi8998_haptics *haptics)
 {
-	unsigned long wait_time_us;
 	int ret, i;
 	u8 val;
 
@@ -316,12 +311,6 @@ static bool is_haptics_idle(struct pmi8998_haptics *haptics)
 
 	return true;
 }
-
-/***************************************
- * CONFIGURATION FUNCTIONS
- * - Functions to write configuration to
- * the hardware.
- ***************************************/
 
 static int pmi8998_haptics_module_enable(struct pmi8998_haptics *haptics, bool enable)
 {
@@ -418,24 +407,20 @@ static int pmi8998_haptics_write_play_rate(struct pmi8998_haptics *haptics, u16 
 	return 0;
 }
 
+/*
+ * pmi8998_haptics_set_auto_res() - Auto resonance
+ * allows the haptics to automatically adjust the
+ * speed of the oscillation in order to maintain
+ * the resonant frequency.
+ */
 static int pmi8998_haptics_set_auto_res(struct pmi8998_haptics *haptics, bool enable)
 {
 	int rc = 0;
-	u32 delay_us = HAPTICS_BACK_EMF_DELAY_US;
 	u8 val;
 
+	// LRAs are the only type to support auto res
 	if (haptics->actuator_type != HAP_TYPE_LRA)
 		return 0;
-
-	/*
-	 * For auto resonance detection to work properly, sufficient back-emf
-	 * has to be generated. In general, back-emf takes some time to build
-	 * up. When the auto resonance mode is chosen as QWD, high-z will be
-	 * applied for every LRA cycle and hence there won't be enough back-emf
-	 * at the start-up. Hence, the motor needs to vibrate for few LRA cycles
-	 * after the PLAY bit is asserted. Enable the auto resonance after
-	 * 'time_required_to_generate_back_emf_us' is completed.
-	 */
 
 	val = enable ? AUTO_RES_EN_BIT : 0;
 
@@ -446,10 +431,13 @@ static int pmi8998_haptics_set_auto_res(struct pmi8998_haptics *haptics, bool en
 
 	haptics->auto_res_enabled = enable;
 
-	pr_debug("auto_res %sabled\n", enable ? "en" : "dis");
+	pr_debug("auto_res enabled: ", enable);
 	return rc;
 }
 
+/*
+ * Write the configured frequency to the device
+ */
 static void pmi8998_haptics_lra_freq_write(struct pmi8998_haptics *haptics)
 {
 	u8 lra_auto_res[2], val;
@@ -457,6 +445,7 @@ static void pmi8998_haptics_lra_freq_write(struct pmi8998_haptics *haptics)
 	u16 rate_cfg;
 	int rc;
 
+	// First we read the auto resonance value
 	rc = pmi8998_haptics_read(haptics, HAP_LRA_AUTO_RES_LO_REG(haptics),
 				lra_auto_res, 2);
 	if (rc < 0) {
@@ -507,6 +496,9 @@ static void pmi8998_haptics_lra_freq_write(struct pmi8998_haptics *haptics)
 		pr_err("Error in updating rate_cfg\n");
 }
 
+/*
+ * Write the brake pattern.
+ */
 static int pmi8998_haptics_write_brake(struct pmi8998_haptics *haptics)
 {
 	int ret, i;
@@ -540,7 +532,6 @@ static int pmi8998_haptics_write_brake(struct pmi8998_haptics *haptics)
 static int pmi8998_haptics_write_buffer_config(struct pmi8998_haptics *haptics)
 {
 	u8 buf[HAP_WAVE_SAMP_LEN];
-	u32* ptr;
 	int rc, i;
 
 	pr_debug("Writing buffer config");
@@ -636,6 +627,9 @@ static irqreturn_t pmi8998_haptics_play_irq_handler(int irq, void *data) {
  * keep vibrating.
  *
  * Otherwise, it means a short circuit situation has occured.
+ * 
+ * Vibration will stop if we don't clear the flag bit, we act as a watchdog
+ * in that sense.
  */
 static irqreturn_t pmi8998_haptics_sc_irq_handler(int irq, void *data) {
 	struct pmi8998_haptics *haptics = data;
@@ -662,7 +656,8 @@ static irqreturn_t pmi8998_haptics_sc_irq_handler(int irq, void *data) {
 	else
 		haptics->sc_count++;
 
-	val = SC_CLR_BIT; // We MUST clear the interrupt, otherwise hardware stops playing
+	// Clear the interrupt flag
+	val = SC_CLR_BIT;
 	ret = pmi8998_haptics_write(haptics, HAP_SC_CLR_REG(haptics), &val, 1);
 	if (ret < 0) {
 		pr_err("Error in writing to SC_CLR_REG, rc=%d\n", ret);
@@ -690,7 +685,7 @@ irq_handled:
  */
 static int pmi8998_haptics_init(struct pmi8998_haptics *haptics) {
 	int ret;
-	u8 val, mask, rc_clk_err_deci_pct;
+	u8 val, mask;
 	u16 lra_res_cal_period, auto_res_mode;
 	u16 play_rate = 0;
 
@@ -707,13 +702,15 @@ static int pmi8998_haptics_init(struct pmi8998_haptics *haptics) {
 	val = ilog2(lra_res_cal_period / HAP_RES_CAL_PERIOD_MIN); // For sdm660 add 1 here
 
 	val |= (auto_res_mode << LRA_AUTO_RES_MODE_SHIFT);
-	val |= (1 << LRA_HIGH_Z_SHIFT); // OPT1, default for op6, lra_high_z
+	// The 1 here is for OPT1, there are 3 options and no documentation
+	// indicating the difference
+	val |= (1 << LRA_HIGH_Z_SHIFT);
 	mask = LRA_AUTO_RES_MODE_MASK | LRA_HIGH_Z_MASK | LRA_RES_CAL_MASK;
 
 	ret = pmi8998_haptics_write_masked(haptics, HAP_LRA_AUTO_RES_REG(haptics),
 			mask, val);
 
-	pr_err("%s: mode: %d hi_z period: %d cal_period: %d\n", __func__,
+	pr_debug("%s: mode: %d hi_z period: %d cal_period: %d\n", __func__,
 		auto_res_mode, 1,
 		lra_res_cal_period);
 	
@@ -731,19 +728,21 @@ static int pmi8998_haptics_init(struct pmi8998_haptics *haptics) {
 	if (ret < 0)
 		return ret;
 
-	/* Configure the short circuit debounce register */
-	val = HAP_SC_DEB_CYCLES_MAX; // Default for oneplus 6
+	// Configure the debounce for the short-circuit
+	// detection
+	val = HAP_SC_DEB_CYCLES_MAX;
 	ret = pmi8998_haptics_write_masked(haptics, HAP_SC_DEB_REG(haptics),
 			HAP_SC_DEB_MASK, HAP_SC_DEB_CYCLES_MAX);
 	if (ret < 0)
 		return ret;
 
-	/* Configure the WAVE SHAPE register */
+	// write the wave shape
 	ret = pmi8998_haptics_write_masked(haptics, HAP_CFG2_REG(haptics),
 			HAP_LRA_RES_TYPE_MASK, haptics->wave_shape);
 	if (ret < 0)
 		return ret;
 
+	// The play rate is the wave_rate / cycles per wave
 	play_rate = haptics->play_wave_rate / HAP_RATE_CFG_STEP_US;
 
 	/*
@@ -753,10 +752,9 @@ static int pmi8998_haptics_init(struct pmi8998_haptics *haptics) {
 	 */
 	ret = pmi8998_haptics_write_play_rate(haptics, play_rate);
 	if (haptics->actuator_type == HAP_TYPE_LRA) {
-		haptics->drive_period_code_max_limit = (play_rate *
-			(100 + 5)) / 100; // OnePlus 6 hard coded drive period code max variation percent
-		haptics->drive_period_code_min_limit = (play_rate *
-			(100 - 5)) / 100; // ^^
+		haptics->drive_period_code_max_limit = (play_rate * (100 + 5)) / 100;
+		haptics->drive_period_code_min_limit = (play_rate * (100 - 5)) / 100;
+
 		pr_debug("Drive period code max limit %x min limit %x\n",
 			haptics->drive_period_code_max_limit,
 			haptics->drive_period_code_min_limit);
@@ -776,10 +774,12 @@ static int pmi8998_haptics_init(struct pmi8998_haptics *haptics) {
 
 	/* setup play irq */
 	if (haptics->play_irq >= 0) {
-		pr_info("%s: Requesting play IRQ, dev pointer: %p, irq: %d", __func__, haptics->pdev->dev, haptics->play_irq);
+		pr_debug("%s: Requesting play IRQ, dev pointer: %p, irq: %d", __func__,
+			haptics->pdev->dev, haptics->play_irq);
 		ret = devm_request_threaded_irq(&haptics->pdev->dev, haptics->play_irq,
 			NULL, pmi8998_haptics_play_irq_handler, IRQF_ONESHOT,
 			"haptics_play_irq", haptics);
+
 		if (ret < 0) {
 			pr_err("Unable to request play(%d) IRQ(err:%d)\n",
 				haptics->play_irq, ret);
@@ -796,10 +796,12 @@ static int pmi8998_haptics_init(struct pmi8998_haptics *haptics) {
 
 	/* setup short circuit1 irq */
 	if (haptics->sc_irq >= 0) {
-		pr_info("%s: Requesting play IRQ, dev pointer: %p, irq: %d", __func__, haptics->pdev->dev, haptics->play_irq);
+		pr_debug("%s: Requesting play IRQ, dev pointer: %p, irq: %d", __func__,
+			haptics->pdev->dev, haptics->play_irq);
 		ret = devm_request_threaded_irq(&haptics->pdev->dev, haptics->sc_irq,
 			NULL, pmi8998_haptics_sc_irq_handler, IRQF_ONESHOT,
 			"haptics_sc_irq", haptics);
+
 		if (ret < 0) {
 			pr_err("Unable to request sc(%d) IRQ(err:%d)\n",
 				haptics->sc_irq, ret);
@@ -822,6 +824,12 @@ static int pmi8998_haptics_set(struct pmi8998_haptics *haptics, bool enable)
 	mutex_lock(&haptics->play_lock);
 
 	if (enable) {
+		// Are we in a short circuit state
+		if (haptics->sc_count > SC_MAX_COUNT) {
+			pr_err("Can't play while in short circuit");
+			ret = -1;
+			goto out;
+		}
 		ret = pmi8998_haptics_set_auto_res(haptics, false);
 		if (ret < 0) {
 			pr_err("Error in disabling auto_res, ret=%d\n", ret);
@@ -852,6 +860,12 @@ static int pmi8998_haptics_set(struct pmi8998_haptics *haptics, bool enable)
 			goto out;
 		}
 
+		ret = pmi8998_haptics_module_enable(haptics, false);
+		if (ret < 0) {
+			pr_err("Error in disabling module, ret=%d\n", ret);
+			goto out;
+		}
+
 		if (haptics->auto_res_enabled)
 			pmi8998_haptics_lra_freq_write(haptics);
 	}
@@ -861,6 +875,9 @@ out:
 	return ret;
 }
 
+/*
+ * Work function to update the haptics state.
+ */
 static void pmi8998_process_work(struct work_struct *work)
 {
 	struct pmi8998_haptics *haptics = container_of(work, struct pmi8998_haptics, work);
@@ -873,12 +890,11 @@ static void pmi8998_process_work(struct work_struct *work)
 
 	ret = pmi8998_haptics_set(haptics, enable);
 	if (ret < 0)
-		pr_err("Error in %sing haptics, ret=%d\n",
-			enable ? "play" : "stop", ret);
+		pr_err("Error setting haptics, ret=%d", ret);
 }
 
 /**
- * pmi8998_haptics_close - callback of input close callback
+ * pmi8998_haptics_close - callback for input device close
  * @dev: input device pointer
  *
  * Turns off the vibrator.
@@ -887,17 +903,15 @@ static void pmi8998_haptics_close(struct input_dev *dev)
 {
 	struct pmi8998_haptics *haptics = input_get_drvdata(dev);
 
-	pr_info("%s", __func__);
-
 	cancel_work_sync(&haptics->work);
 	if (atomic_read(&haptics->active)) {
 		atomic_set(&haptics->active, 0);
-		pmi8998_haptics_set(haptics, false);
+		schedule_work(&haptics->work);
 	}
 }
 
 /**
- * pmi8998_haptics_play_effect - function to handle vib effects.
+ * pmi8998_haptics_play_effect - play haptics effects
  * @dev: input device pointer
  * @data: data of effect
  * @effect: effect to play
@@ -908,8 +922,9 @@ static int pmi8998_haptics_play_effect(struct input_dev *dev, void *data,
 				  struct ff_effect *effect)
 {
 	struct pmi8998_haptics *haptics = input_get_drvdata(dev);
-	int magnitude;
-	pr_debug("%s: Rumbling with strong: %d and weak: %d", __func__, effect->u.rumble.strong_magnitude, effect->u.rumble.weak_magnitude);
+
+	pr_debug("%s: Rumbling with strong: %d and weak: %d", __func__,
+		effect->u.rumble.strong_magnitude, effect->u.rumble.weak_magnitude);
 
 	haptics->magnitude = effect->u.rumble.strong_magnitude >> 8;
 	if (!haptics->magnitude)
@@ -942,7 +957,7 @@ static int pmi8998_haptics_probe(struct platform_device *pdev)
 	struct input_dev *input_dev;
 	int ret;
 	unsigned int val;
-	int temp;
+	int temp, i;
 
 	haptics = devm_kzalloc(&pdev->dev, sizeof(*haptics), GFP_KERNEL);
 	if (!haptics)
@@ -984,35 +999,8 @@ static int pmi8998_haptics_probe(struct platform_device *pdev)
 	}
 
 	haptics->actuator_type = HAP_TYPE_LRA;
-	ret = of_property_read_u32(node, "qcom,actuator-type", &val);
-	if (!ret) {
-		if (val != HAP_TYPE_LRA && val != HAP_TYPE_ERM) {
-			dev_err(&pdev->dev, "qcom,actuator-type is invalid: %d\n", val);
-			ret = -EINVAL;
-			goto register_fail;
-		}
-		haptics->actuator_type = val;
-	}
 
-	// We don't support auto mode for LRAs yet yet
 	haptics->play_mode = HAP_PLAY_BUFFER;
-	ret = of_property_read_u32(node, "qcom,play-mode", &val);
-	if (!ret) {
-		if (val != HAP_PLAY_BUFFER) {
-			dev_err(&pdev->dev, "Only BUFFER play mode is currently supported");
-			goto register_fail;
-		}
-		//haptics->play_mode = val;
-	}
-
-	haptics->vmax = HAP_VMAX_MAX_MV;
-	ret = of_property_read_u32(node, "qcom,vmax-mv", &val);
-	if (!ret) {
-		haptics->vmax = val;
-	} else if (ret != -EINVAL) {
-		pr_err("Unable to read Vmax ret=%d\n", ret);
-		goto register_fail;
-	}
 
 	haptics->play_wave_rate = HAP_WAVE_PLAY_RATE_DEF_US;
 	ret = of_property_read_u32(node,
@@ -1041,7 +1029,7 @@ static int pmi8998_haptics_probe(struct platform_device *pdev)
 	haptics->brake_pat[3] = 0x3;
 
 	haptics->wave_samp_idx = 0;
-	int i = 0;
+
 	for (i = 0; i < HAP_WAVE_SAMP_LEN; i++)
 			haptics->wave_samp[i] = HAP_WF_SAMP_MAX;
 
@@ -1049,11 +1037,6 @@ static int pmi8998_haptics_probe(struct platform_device *pdev)
 		constrain(haptics->play_wave_rate,
 		HAP_WAVE_PLAY_RATE_MIN_US, HAP_WAVE_PLAY_RATE_MAX_US);
 
-// Buffer specific DT stuff, will need to be optional for PWM / other modes to work
-// 'qpnp_haptics_parse_buffer_dt' in downstream
-	// We don't actually care to make any of this stuff adjustable yet!
-
-	// Initialise hardware.
 	ret = pmi8998_haptics_init(haptics);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Error in configuring haptics, ret=%d\n",
@@ -1063,7 +1046,6 @@ static int pmi8998_haptics_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, haptics);
 
-// Register input device
 	input_dev = devm_input_allocate_device(&pdev->dev);
 	if (!input_dev)
 		return -ENOMEM;
@@ -1103,9 +1085,10 @@ register_fail:
 
 static int __maybe_unused pmi8998_haptics_suspend(struct device *dev)
 {
-	struct pmi8998_haptics *vib = dev_get_drvdata(dev);
+	struct pmi8998_haptics *haptics = dev_get_drvdata(dev);
 
-	pmi8998_haptics_set(vib, false);
+	cancel_work_sync(&haptics->work);
+	pmi8998_haptics_set(haptics, false);
 
 	return 0;
 }
@@ -1129,12 +1112,11 @@ static void qpnp_haptics_shutdown(struct platform_device *pdev)
 
 	cancel_work_sync(&haptics->work);
 
-	/* disable haptics */
-	pmi8998_haptics_module_enable(haptics, false);
+	pmi8998_haptics_set(haptics, false);
 }
 
 static const struct of_device_id pmi8998_haptics_id_table[] = {
-	{ .compatible = "qcom,qpnp-haptics-buffer", },
+	{ .compatible = "qcom,qpnp-haptics-buffer" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, pmi8998_haptics_id_table);
