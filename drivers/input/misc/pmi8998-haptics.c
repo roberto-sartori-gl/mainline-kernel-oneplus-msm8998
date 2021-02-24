@@ -215,7 +215,7 @@ static int pmi8998_haptics_read(struct pmi8998_haptics *haptics, u16 addr, u8 *v
 	if (ret < 0)
 		pr_err("Error reading address: 0x%x, ret %d\n", addr, ret);
 	
-	pr_debug("%s: read 0x%x from 0x%x with mask 0x%x", __func__, *val, addr);
+	pr_debug("%s: read 0x%x from 0x%x", __func__, *val, addr);
 
 	return ret;
 }
@@ -431,7 +431,7 @@ static int pmi8998_haptics_set_auto_res(struct pmi8998_haptics *haptics, bool en
 
 	haptics->auto_res_enabled = enable;
 
-	pr_debug("auto_res enabled: ", enable);
+	pr_debug("auto_res enabled: %d", enable);
 	return rc;
 }
 
@@ -774,8 +774,7 @@ static int pmi8998_haptics_init(struct pmi8998_haptics *haptics) {
 
 	/* setup play irq */
 	if (haptics->play_irq >= 0) {
-		pr_debug("%s: Requesting play IRQ, dev pointer: %p, irq: %d", __func__,
-			haptics->pdev->dev, haptics->play_irq);
+		pr_debug("%s: Requesting play IRQ, irq: %d", __func__, haptics->play_irq);
 		ret = devm_request_threaded_irq(&haptics->pdev->dev, haptics->play_irq,
 			NULL, pmi8998_haptics_play_irq_handler, IRQF_ONESHOT,
 			"haptics_play_irq", haptics);
@@ -796,8 +795,7 @@ static int pmi8998_haptics_init(struct pmi8998_haptics *haptics) {
 
 	/* setup short circuit1 irq */
 	if (haptics->sc_irq >= 0) {
-		pr_debug("%s: Requesting play IRQ, dev pointer: %p, irq: %d", __func__,
-			haptics->pdev->dev, haptics->play_irq);
+		pr_debug("%s: Requesting SC IRQ, irq: %d", __func__, haptics->sc_irq);
 		ret = devm_request_threaded_irq(&haptics->pdev->dev, haptics->sc_irq,
 			NULL, pmi8998_haptics_sc_irq_handler, IRQF_ONESHOT,
 			"haptics_sc_irq", haptics);
