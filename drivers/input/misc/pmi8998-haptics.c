@@ -275,39 +275,18 @@ static int pmi8998_haptics_write_masked(struct pmi8998_haptics *haptics, u16 add
 	return ret;
 }
 
-#define MAX_RETRIES	5
-#define HAP_CYCLES	4
 static bool is_haptics_idle(struct pmi8998_haptics *haptics)
 {
-	int ret, i;
+	int ret;
 	u8 val;
 
-	ret = pmi8998_haptics_read(haptics, HAP_STATUS_1_REG(haptics), &val, 1);
-	if (ret < 0)
-		return false;
-
-	if (!(val & HAP_BUSY_BIT))
+	if (haptics->play_mode == HAP_PLAY_DIRECT ||
+			haptics->play_mode == HAP_PLAY_PWM)
 		return true;
 
-	for (i = 0; i < MAX_RETRIES; i++) {
-
-		if (haptics->play_mode == HAP_PLAY_DIRECT ||
-				haptics->play_mode == HAP_PLAY_PWM)
-			return true;
-
-		ret = pmi8998_haptics_read(haptics, HAP_STATUS_1_REG(haptics), &val,
-					1);
-		if (ret < 0)
-			return false;
-
-		if (!(val & HAP_BUSY_BIT))
-			return true;
-	}
-
-	if (i >= MAX_RETRIES && (val & HAP_BUSY_BIT)) {
-		pr_err("Haptics Busy after %d retries\n", i);
+	ret = pmi8998_haptics_read(haptics, HAP_STATUS_1_REG(haptics), &val, 1);
+	if (ret < 0 || (val & HAP_BUSY_BIT))
 		return false;
-	}
 
 	return true;
 }
