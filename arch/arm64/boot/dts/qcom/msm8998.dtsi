@@ -1761,12 +1761,9 @@
 
 		adreno_gpu: gpu@5000000 {
 			compatible = "qcom,adreno-540.1", "qcom,adreno";
-			#stream-id-cells = <16>;
 
 			reg = <0x05000000 0x40000>;
 			reg-names = "kgsl_3d0_reg_memory";
-
-			interrupts = <0 300 IRQ_TYPE_LEVEL_HIGH>;
 
 			clocks = <&gcc GCC_GPU_CFG_AHB_CLK>,
 				<&gpucc RBBMTIMER_CLK>,
