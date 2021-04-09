@@ -426,8 +426,8 @@ static inline int avc_xperms_audit(struct selinux_state *state,
 			requested, avd, xpd, perm, result, &denied);
 	if (likely(!audited))
 		return 0;
-	return slow_avc_audit(state, ssid, tsid, tclass, requested,
-			audited, denied, result, ad);
+	return 0;//slow_avc_audit(state, ssid, tsid, tclass, requested,
+		//	audited, denied, result, ad);
 }
 
 static void avc_node_free(struct rcu_head *rhead)
@@ -703,7 +703,7 @@ static void avc_audit_pre_callback(struct audit_buffer *ab, void *a)
  */
 static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 {
-	struct common_audit_data *ad = a;
+	/*struct common_audit_data *ad = a;
 	struct selinux_audit_data *sad = ad->selinux_audit_data;
 	char *scontext = NULL;
 	char *tcontext = NULL;
@@ -736,7 +736,6 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 	kfree(tcontext);
 	kfree(scontext);
 
-	/* in case of invalid context report also the actual context string */
 	rc = security_sid_to_context_inval(sad->state, sad->ssid, &scontext,
 					   &scontext_len);
 	if (!rc && scontext) {
@@ -755,7 +754,7 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 		audit_log_format(ab, " trawcon=");
 		audit_log_n_untrustedstring(ab, scontext, scontext_len);
 		kfree(scontext);
-	}
+	}*/
 }
 
 /* This is the slow part of avc audit with big stack footprint */

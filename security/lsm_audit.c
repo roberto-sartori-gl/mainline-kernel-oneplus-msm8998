@@ -460,10 +460,10 @@ void common_lsm_audit(struct common_audit_data *a,
 	if (pre_audit)
 		pre_audit(ab, a);
 
-	dump_common_audit_data(ab, a);
+	//dump_common_audit_data(ab, a);
 
-	if (post_audit)
-		post_audit(ab, a);
+	//if (post_audit)
+	//	post_audit(ab, a);
 
-	audit_log_end(ab);
+	//audit_log_end(ab);
 }

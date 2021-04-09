@@ -495,10 +495,10 @@ static void security_dump_masked_av(struct policydb *policydb,
 	if (!ab)
 		goto out;
 
-	audit_log_format(ab, "op=security_compute_av reason=%s "
+	/*audit_log_format(ab, "op=security_compute_av reason=%s "
 			 "scontext=%s tcontext=%s tclass=%s perms=",
 			 reason, scontext_name, tcontext_name, tclass_name);
-
+*/
 	for (index = 0; index < 32; index++) {
 		u32 mask = (1 << index);
 
@@ -1650,9 +1650,9 @@ static int compute_sid_handle_invalid_context(
 			 "op=security_compute_sid invalid_context=");
 	/* no need to record the NUL with untrusted strings */
 	audit_log_n_untrustedstring(ab, n, nlen - 1);
-	audit_log_format(ab, " scontext=%s tcontext=%s tclass=%s",
-			 s, t, sym_name(policydb, SYM_CLASSES, tclass-1));
-	audit_log_end(ab);
+	//audit_log_format(ab, " scontext=%s tcontext=%s tclass=%s",
+	//		 s, t, sym_name(policydb, SYM_CLASSES, tclass-1));
+	//audit_log_end(ab);
 out:
 	kfree(s);
 	kfree(t);

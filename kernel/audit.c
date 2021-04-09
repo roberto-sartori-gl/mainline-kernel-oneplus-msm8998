@@ -1547,33 +1547,6 @@ static void audit_receive(struct sk_buff  *skb)
 /* Log information about who is connecting to the audit multicast socket */
 static void audit_log_multicast(int group, const char *op, int err)
 {
-	const struct cred *cred;
-	struct tty_struct *tty;
-	char comm[sizeof(current->comm)];
-	struct audit_buffer *ab;
-
-	if (!audit_enabled)
-		return;
-
-	ab = audit_log_start(audit_context(), GFP_KERNEL, AUDIT_EVENT_LISTENER);
-	if (!ab)
-		return;
-
-	cred = current_cred();
-	tty = audit_get_tty();
-	audit_log_format(ab, "pid=%u uid=%u auid=%u tty=%s ses=%u",
-			 task_pid_nr(current),
-			 from_kuid(&init_user_ns, cred->uid),
-			 from_kuid(&init_user_ns, audit_get_loginuid(current)),
-			 tty ? tty_name(tty) : "(none)",
-			 audit_get_sessionid(current));
-	audit_put_tty(tty);
-	audit_log_task_context(ab); /* subj= */
-	audit_log_format(ab, " comm=");
-	audit_log_untrustedstring(ab, get_task_comm(comm, current));
-	audit_log_d_path_exe(ab, current->mm); /* exe= */
-	audit_log_format(ab, " nl-mcgrp=%d op=%s res=%d", group, op, !err);
-	audit_log_end(ab);
 }
 
 /* Run custom bind function on netlink socket group connect or bind requests. */
@@ -2188,37 +2161,6 @@ void audit_put_tty(struct tty_struct *tty)
 
 void audit_log_task_info(struct audit_buffer *ab)
 {
-	const struct cred *cred;
-	char comm[sizeof(current->comm)];
-	struct tty_struct *tty;
-
-	if (!ab)
-		return;
-
-	cred = current_cred();
-	tty = audit_get_tty();
-	audit_log_format(ab,
-			 " ppid=%d pid=%d auid=%u uid=%u gid=%u"
-			 " euid=%u suid=%u fsuid=%u"
-			 " egid=%u sgid=%u fsgid=%u tty=%s ses=%u",
-			 task_ppid_nr(current),
-			 task_tgid_nr(current),
-			 from_kuid(&init_user_ns, audit_get_loginuid(current)),
-			 from_kuid(&init_user_ns, cred->uid),
-			 from_kgid(&init_user_ns, cred->gid),
-			 from_kuid(&init_user_ns, cred->euid),
-			 from_kuid(&init_user_ns, cred->suid),
-			 from_kuid(&init_user_ns, cred->fsuid),
-			 from_kgid(&init_user_ns, cred->egid),
-			 from_kgid(&init_user_ns, cred->sgid),
-			 from_kgid(&init_user_ns, cred->fsgid),
-			 tty ? tty_name(tty) : "(none)",
-			 audit_get_sessionid(current));
-	audit_put_tty(tty);
-	audit_log_format(ab, " comm=");
-	audit_log_untrustedstring(ab, get_task_comm(comm, current));
-	audit_log_d_path_exe(ab, current->mm);
-	audit_log_task_context(ab);
 }
 EXPORT_SYMBOL(audit_log_task_info);
 
@@ -2406,7 +2348,7 @@ void audit_log_end(struct audit_buffer *ab)
 void audit_log(struct audit_context *ctx, gfp_t gfp_mask, int type,
 	       const char *fmt, ...)
 {
-	struct audit_buffer *ab;
+	/*struct audit_buffer *ab;
 	va_list args;
 
 	ab = audit_log_start(ctx, gfp_mask, type);
@@ -2415,7 +2357,7 @@ void audit_log(struct audit_context *ctx, gfp_t gfp_mask, int type,
 		audit_log_vformat(ab, fmt, args);
 		va_end(args);
 		audit_log_end(ab);
-	}
+	}*/
 }
 
 EXPORT_SYMBOL(audit_log_start);

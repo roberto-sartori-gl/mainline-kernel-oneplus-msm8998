@@ -37,11 +37,11 @@ void integrity_audit_message(int audit_msgno, struct inode *inode,
 			     const unsigned char *fname, const char *op,
 			     const char *cause, int result, int audit_info,
 			     int errno)
-{
+{/*
 	struct audit_buffer *ab;
 	char name[TASK_COMM_LEN];
 
-	if (!integrity_audit_info && audit_info == 1)	/* Skip info messages */
+	if (!integrity_audit_info && audit_info == 1)
 		return;
 
 	ab = audit_log_start(audit_context(), GFP_KERNEL, audit_msgno);
@@ -63,5 +63,5 @@ void integrity_audit_message(int audit_msgno, struct inode *inode,
 		audit_log_format(ab, " ino=%lu", inode->i_ino);
 	}
 	audit_log_format(ab, " res=%d errno=%d", !result, errno);
-	audit_log_end(ab);
+	audit_log_end(ab);*/
 }
