@@ -1727,7 +1727,7 @@
 				 <&gcc GCC_MSS_SNOC_AXI_CLK>,
 				 <&gcc GCC_MSS_MNOC_BIMC_AXI_CLK>,
 				 <&rpmcc RPM_SMD_QDSS_CLK>,
-				 <&xo>;
+				 <&rpmcc RPM_SMD_XO_CLK_SRC>;
 			clock-names = "iface", "bus", "mem", "gpll0_mss",
 				      "snoc_axi", "mnoc_axi", "qdss", "xo";
 
@@ -1761,7 +1761,6 @@
 
 		adreno_gpu: gpu@5000000 {
 			compatible = "qcom,adreno-540.1", "qcom,adreno";
-
 			reg = <0x05000000 0x40000>;
 			reg-names = "kgsl_3d0_reg_memory";
 
@@ -1770,7 +1769,6 @@
 				<&gcc GCC_BIMC_GFX_CLK>,
 				<&gcc GCC_GPU_BIMC_GFX_CLK>,
 				<&gpucc RBCPR_CLK>,
-				<&gpucc GFX3D_ISENSE_CLK>,
 				<&gpucc GFX3D_CLK>;
 			clock-names = "iface",
 				"rbbmtimer",
@@ -1791,49 +1789,42 @@
 				opp-710000000 {
 					opp-hz = /bits/ 64 <710000000>;
 					opp-level = <RPM_SMD_LEVEL_TURBO>;
-					opp-peak-kBps = <14432000>;
 					opp-supported-hw = <0xFF>;
 				};
 
 				opp-670000000 {
 					opp-hz = /bits/ 64 <670000000>;
 					opp-level = <RPM_SMD_LEVEL_NOM_PLUS>;
-					opp-peak-kBps = <13436000>;
 					opp-supported-hw = <0xFF>;
 				};
 
 				opp-596000000 {
 					opp-hz = /bits/ 64 <596000000>;
 					opp-level = <RPM_SMD_LEVEL_NOM>;
-					opp-peak-kBps = <12440000>;
 					opp-supported-hw = <0xFF>;
 				};
 
 				opp-515000000 {
 					opp-hz = /bits/ 64 <515000000>;
 					opp-level = <RPM_SMD_LEVEL_SVS_PLUS>;
-					opp-peak-kBps = <10368000>;
 					opp-supported-hw = <0xFF>;
 				};
 
 				opp-414000000 {
 					opp-hz = /bits/ 64 <414000000>;
 					opp-level = <RPM_SMD_LEVEL_SVS>;
-					opp-peak-kBps = <8136000>;
 					opp-supported-hw = <0xFF>;
 				};
 
 				opp-342000000 {
 					opp-hz = /bits/ 64 <342000000>;
 					opp-level = <RPM_SMD_LEVEL_LOW_SVS>;
-					opp-peak-kBps = <6144000>;
 					opp-supported-hw = <0xFF>;
 				};
 
 				opp-257000000 {
 					opp-hz = /bits/ 64 <257000000>;
 					opp-level = <RPM_SMD_LEVEL_MIN_SVS>;
-					opp-peak-kBps = <3296000>;
 					opp-supported-hw = <0xFF>;
 				};
 			};
@@ -1872,7 +1863,7 @@
 			#power-domain-cells = <1>;
 			reg = <0x05065000 0x9000>;
 
-			clocks = <&xo>,
+			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>,
 				 <&gcc GPLL0_OUT_MAIN>;
 			clock-names = "xo",
 				      "gpll0";
@@ -1892,7 +1883,7 @@
 
 			px-supply = <&vreg_lvs2a_1p8>;
 
-			clocks = <&xo>,
+			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>,
 				 <&rpmcc RPM_SMD_AGGR2_NOC_CLK>;
 			clock-names = "xo", "aggre2";
 
@@ -3037,7 +3028,7 @@
 			interrupt-names = "wdog", "fatal", "ready",
 					  "handover", "stop-ack";
 
-			clocks = <&xo>;
+			clocks = <&rpmcc RPM_SMD_XO_CLK_SRC>;
 			clock-names = "xo";
 
 			memory-region = <&adsp_mem>;
