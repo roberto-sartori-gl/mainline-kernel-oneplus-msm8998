@@ -85,10 +85,8 @@ void tidss_crtc_error_irq(struct drm_crtc *crtc, u64 irqstatus)
 /* drm_crtc_helper_funcs */
 
 static int tidss_crtc_atomic_check(struct drm_crtc *crtc,
-				   struct drm_atomic_state *state)
+				   struct drm_crtc_state *state)
 {
-	struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state,
-									  crtc);
 	struct drm_device *ddev = crtc->dev;
 	struct tidss_device *tidss = to_tidss(ddev);
 	struct dispc_device *dispc = tidss->dispc;
@@ -99,10 +97,10 @@ static int tidss_crtc_atomic_check(struct drm_crtc *crtc,
 
 	dev_dbg(ddev->dev, "%s\n", __func__);
 
-	if (!crtc_state->enable)
+	if (!state->enable)
 		return 0;
 
-	mode = &crtc_state->adjusted_mode;
+	mode = &state->adjusted_mode;
 
 	ok = dispc_vp_mode_valid(dispc, hw_videoport, mode);
 	if (ok != MODE_OK) {
@@ -111,7 +109,7 @@ static int tidss_crtc_atomic_check(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-	return dispc_vp_bus_check(dispc, hw_videoport, crtc_state);
+	return dispc_vp_bus_check(dispc, hw_videoport, state);
 }
 
 /*
@@ -163,10 +161,8 @@ static void tidss_crtc_position_planes(struct tidss_device *tidss,
 }
 
 static void tidss_crtc_atomic_flush(struct drm_crtc *crtc,
-				    struct drm_atomic_state *state)
+				    struct drm_crtc_state *old_crtc_state)
 {
-	struct drm_crtc_state *old_crtc_state = drm_atomic_get_old_crtc_state(state,
-									      crtc);
 	struct tidss_crtc *tcrtc = to_tidss_crtc(crtc);
 	struct drm_device *ddev = crtc->dev;
 	struct tidss_device *tidss = to_tidss(ddev);
@@ -216,10 +212,8 @@ static void tidss_crtc_atomic_flush(struct drm_crtc *crtc,
 }
 
 static void tidss_crtc_atomic_enable(struct drm_crtc *crtc,
-				     struct drm_atomic_state *state)
+				     struct drm_crtc_state *old_state)
 {
-	struct drm_crtc_state *old_state = drm_atomic_get_old_crtc_state(state,
-									 crtc);
 	struct tidss_crtc *tcrtc = to_tidss_crtc(crtc);
 	struct drm_device *ddev = crtc->dev;
 	struct tidss_device *tidss = to_tidss(ddev);
@@ -261,7 +255,7 @@ static void tidss_crtc_atomic_enable(struct drm_crtc *crtc,
 }
 
 static void tidss_crtc_atomic_disable(struct drm_crtc *crtc,
-				      struct drm_atomic_state *state)
+				      struct drm_crtc_state *old_state)
 {
 	struct tidss_crtc *tcrtc = to_tidss_crtc(crtc);
 	struct drm_device *ddev = crtc->dev;

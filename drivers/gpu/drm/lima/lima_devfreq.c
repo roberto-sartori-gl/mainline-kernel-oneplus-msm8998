@@ -35,13 +35,18 @@ static int lima_devfreq_target(struct device *dev, unsigned long *freq,
 			       u32 flags)
 {
 	struct dev_pm_opp *opp;
+	int err;
 
 	opp = devfreq_recommended_opp(dev, freq, flags);
 	if (IS_ERR(opp))
 		return PTR_ERR(opp);
 	dev_pm_opp_put(opp);
 
-	return dev_pm_opp_set_rate(dev, *freq);
+	err = dev_pm_opp_set_rate(dev, *freq);
+	if (err)
+		return err;
+
+	return 0;
 }
 
 static void lima_devfreq_reset(struct lima_devfreq *devfreq)
@@ -100,7 +105,10 @@ void lima_devfreq_fini(struct lima_device *ldev)
 		devfreq->devfreq = NULL;
 	}
 
-	dev_pm_opp_of_remove_table(ldev->dev);
+	if (devfreq->opp_of_table_added) {
+		dev_pm_opp_of_remove_table(ldev->dev);
+		devfreq->opp_of_table_added = false;
+	}
 
 	if (devfreq->regulators_opp_table) {
 		dev_pm_opp_put_regulators(devfreq->regulators_opp_table);
@@ -154,6 +162,7 @@ int lima_devfreq_init(struct lima_device *ldev)
 	ret = dev_pm_opp_of_add_table(dev);
 	if (ret)
 		goto err_fini;
+	ldevfreq->opp_of_table_added = true;
 
 	lima_devfreq_reset(ldevfreq);
 

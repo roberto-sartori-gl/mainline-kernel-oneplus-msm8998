@@ -1162,7 +1162,6 @@ static int r300_packet0_check(struct radeon_cs_parser *p,
 		/* valid register only on RV530 */
 		if (p->rdev->family == CHIP_RV530)
 			break;
-		fallthrough;
 		/* fallthrough do not move */
 	default:
 		goto fail;

@@ -16,7 +16,6 @@
 #include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/regulator/consumer.h>
-#include <linux/media-bus-format.h>
 
 #include <video/mipi_display.h>
 
@@ -411,7 +410,6 @@ static int s6e63m0_get_modes(struct drm_panel *panel,
 			     struct drm_connector *connector)
 {
 	struct drm_display_mode *mode;
-	static const u32 bus_format = MEDIA_BUS_FMT_RGB888_1X24;
 
 	mode = drm_mode_duplicate(connector->dev, &default_mode);
 	if (!mode) {
@@ -420,13 +418,6 @@ static int s6e63m0_get_modes(struct drm_panel *panel,
 			drm_mode_vrefresh(&default_mode));
 		return -ENOMEM;
 	}
-
-	connector->display_info.width_mm = mode->width_mm;
-	connector->display_info.height_mm = mode->height_mm;
-	drm_display_info_set_bus_formats(&connector->display_info,
-					 &bus_format, 1);
-	connector->display_info.bus_flags = DRM_BUS_FLAG_DE_LOW |
-		DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE;
 
 	drm_mode_set_name(mode);
 

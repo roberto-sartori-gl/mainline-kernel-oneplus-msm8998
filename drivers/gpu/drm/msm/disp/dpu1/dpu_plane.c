@@ -19,6 +19,7 @@
 #include "dpu_kms.h"
 #include "dpu_formats.h"
 #include "dpu_hw_sspp.h"
+#include "dpu_hw_catalog_format.h"
 #include "dpu_trace.h"
 #include "dpu_crtc.h"
 #include "dpu_vbif.h"
@@ -61,16 +62,6 @@ enum {
 #define DPU_QSEED4_DEFAULT_PRELOAD_H 0x4
 
 #define DEFAULT_REFRESH_RATE	60
-
-static const uint32_t qcom_compressed_supported_formats[] = {
-	DRM_FORMAT_ABGR8888,
-	DRM_FORMAT_ARGB8888,
-	DRM_FORMAT_XBGR8888,
-	DRM_FORMAT_XRGB8888,
-	DRM_FORMAT_BGR565,
-
-	DRM_FORMAT_NV12,
-};
 
 /**
  * enum dpu_plane_qos - Different qos configurations for each pipe
@@ -142,8 +133,7 @@ static struct dpu_kms *_dpu_plane_get_kms(struct drm_plane *plane)
 
 /**
  * _dpu_plane_calc_bw - calculate bandwidth required for a plane
- * @plane: Pointer to drm plane.
- * @fb:   Pointer to framebuffer associated with the given plane
+ * @Plane: Pointer to drm plane.
  * Result: Updates calculated bandwidth in the plane state.
  * BW Equation: src_w * src_h * bpp * fps * (v_total / v_dest)
  * Prefill BW Equation: line src bytes * line_time
@@ -161,7 +151,7 @@ static void _dpu_plane_calc_bw(struct drm_plane *plane,
 	u64 plane_bw;
 	u32 hw_latency_lines;
 	u64 scale_factor;
-	int vbp, vpw, vfp;
+	int vbp, vpw;
 
 	pstate = to_dpu_plane_state(plane->state);
 	mode = &plane->state->crtc->mode;
@@ -174,7 +164,6 @@ static void _dpu_plane_calc_bw(struct drm_plane *plane,
 	fps = drm_mode_vrefresh(mode);
 	vbp = mode->vtotal - mode->vsync_end;
 	vpw = mode->vsync_end - mode->vsync_start;
-	vfp = mode->vsync_start - mode->vdisplay;
 	hw_latency_lines =  dpu_kms->catalog->perf.min_prefill_lines;
 	scale_factor = src_height > dst_height ?
 		mult_frac(src_height, 1, dst_height) : 1;
@@ -187,20 +176,14 @@ static void _dpu_plane_calc_bw(struct drm_plane *plane,
 		src_width * hw_latency_lines * fps * fmt->bpp *
 		scale_factor * mode->vtotal;
 
-	if ((vbp+vpw) > hw_latency_lines)
-		do_div(plane_prefill_bw, (vbp+vpw));
-	else if ((vbp+vpw+vfp) < hw_latency_lines)
-		do_div(plane_prefill_bw, (vbp+vpw+vfp));
-	else
-		do_div(plane_prefill_bw, hw_latency_lines);
-
+	do_div(plane_prefill_bw, (vbp+vpw));
 
 	pstate->plane_fetch_bw = max(plane_bw, plane_prefill_bw);
 }
 
 /**
  * _dpu_plane_calc_clk - calculate clock required for a plane
- * @plane: Pointer to drm plane.
+ * @Plane: Pointer to drm plane.
  * Result: Updates calculated clock in the plane state.
  * Clock equation: dst_w * v_total * fps * (src_h / dst_h)
  */
@@ -232,7 +215,7 @@ static void _dpu_plane_calc_clk(struct drm_plane *plane)
  * _dpu_plane_calc_fill_level - calculate fill level of the given source format
  * @plane:		Pointer to drm plane
  * @fmt:		Pointer to source buffer format
- * @src_width:		width of source buffer
+ * @src_wdith:		width of source buffer
  * Return: fill level corresponding to the source buffer/format or 0 if error
  */
 static int _dpu_plane_calc_fill_level(struct drm_plane *plane,
@@ -954,7 +937,6 @@ static int dpu_plane_atomic_check(struct drm_plane *plane,
 {
 	int ret = 0, min_scale;
 	struct dpu_plane *pdpu = to_dpu_plane(plane);
-	struct dpu_plane_state *pstate = to_dpu_plane_state(state);
 	const struct drm_crtc_state *crtc_state = NULL;
 	const struct dpu_format *fmt;
 	struct drm_rect src, dst, fb_rect = { 0 };
@@ -1027,8 +1009,6 @@ static int dpu_plane_atomic_check(struct drm_plane *plane,
 		return -E2BIG;
 	}
 
-	pstate->needs_qos_remap = drm_atomic_crtc_needs_modeset(crtc_state);
-
 	return 0;
 }
 
@@ -1066,7 +1046,6 @@ void dpu_plane_flush(struct drm_plane *plane)
 /**
  * dpu_plane_set_error: enable/disable error condition
  * @plane: pointer to drm_plane structure
- * @error: error value to set
  */
 void dpu_plane_set_error(struct drm_plane *plane, bool error)
 {
@@ -1087,7 +1066,6 @@ static void dpu_plane_sspp_atomic_update(struct drm_plane *plane)
 	struct dpu_plane_state *pstate = to_dpu_plane_state(state);
 	struct drm_crtc *crtc = state->crtc;
 	struct drm_framebuffer *fb = state->fb;
-	bool is_rt_pipe, update_qos_remap;
 	const struct dpu_format *fmt =
 		to_dpu_format(msm_framebuffer_format(fb));
 
@@ -1097,7 +1075,7 @@ static void dpu_plane_sspp_atomic_update(struct drm_plane *plane)
 
 	pstate->pending = true;
 
-	is_rt_pipe = (dpu_crtc_get_client_type(crtc) != NRT_CLIENT);
+	pdpu->is_rt_pipe = (dpu_crtc_get_client_type(crtc) != NRT_CLIENT);
 	_dpu_plane_set_qos_ctrl(plane, false, DPU_PLANE_QOS_PANIC_CTRL);
 
 	DPU_DEBUG_PLANE(pdpu, "FB[%u] " DRM_RECT_FP_FMT "->crtc%u " DRM_RECT_FMT
@@ -1203,16 +1181,7 @@ static void dpu_plane_sspp_atomic_update(struct drm_plane *plane)
 		_dpu_plane_set_ot_limit(plane, crtc);
 	}
 
-	update_qos_remap = (is_rt_pipe != pdpu->is_rt_pipe) ||
-			pstate->needs_qos_remap;
-
-	if (update_qos_remap) {
-		if (is_rt_pipe != pdpu->is_rt_pipe)
-			pdpu->is_rt_pipe = is_rt_pipe;
-		else if (pstate->needs_qos_remap)
-			pstate->needs_qos_remap = false;
-		_dpu_plane_set_qos_remap(plane);
-	}
+	_dpu_plane_set_qos_remap(plane);
 
 	_dpu_plane_calc_bw(plane, fb);
 

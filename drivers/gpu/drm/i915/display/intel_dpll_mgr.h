@@ -154,23 +154,6 @@ enum intel_dpll_id {
 	 * @DPLL_ID_TGL_MGPLL6: TGL TC PLL port 6 (TC6)
 	 */
 	DPLL_ID_TGL_MGPLL6 = 8,
-
-	/**
-	 * @DPLL_ID_DG1_DPLL0: DG1 combo PHY DPLL0
-	 */
-	DPLL_ID_DG1_DPLL0 = 0,
-	/**
-	 * @DPLL_ID_DG1_DPLL1: DG1 combo PHY DPLL1
-	 */
-	DPLL_ID_DG1_DPLL1 = 1,
-	/**
-	 * @DPLL_ID_DG1_DPLL2: DG1 combo PHY DPLL2
-	 */
-	DPLL_ID_DG1_DPLL2 = 2,
-	/**
-	 * @DPLL_ID_DG1_DPLL3: DG1 combo PHY DPLL3
-	 */
-	DPLL_ID_DG1_DPLL3 = 3,
 };
 
 #define I915_NUM_PLLS 9
@@ -300,11 +283,10 @@ struct intel_shared_dpll_funcs {
 	 * @get_freq:
 	 *
 	 * Hook for calculating the pll's output frequency based on its
-	 * passed in state.
+	 * current state.
 	 */
 	int (*get_freq)(struct drm_i915_private *i915,
-			const struct intel_shared_dpll *pll,
-			const struct intel_dpll_hw_state *pll_state);
+			const struct intel_shared_dpll *pll);
 };
 
 /**
@@ -400,11 +382,7 @@ void intel_update_active_dpll(struct intel_atomic_state *state,
 			      struct intel_crtc *crtc,
 			      struct intel_encoder *encoder);
 int intel_dpll_get_freq(struct drm_i915_private *i915,
-			const struct intel_shared_dpll *pll,
-			const struct intel_dpll_hw_state *pll_state);
-bool intel_dpll_get_hw_state(struct drm_i915_private *i915,
-			     struct intel_shared_dpll *pll,
-			     struct intel_dpll_hw_state *hw_state);
+			const struct intel_shared_dpll *pll);
 void intel_prepare_shared_dpll(const struct intel_crtc_state *crtc_state);
 void intel_enable_shared_dpll(const struct intel_crtc_state *crtc_state);
 void intel_disable_shared_dpll(const struct intel_crtc_state *crtc_state);

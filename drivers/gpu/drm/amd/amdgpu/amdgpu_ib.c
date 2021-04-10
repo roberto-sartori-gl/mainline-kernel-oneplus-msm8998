@@ -52,10 +52,8 @@
 /**
  * amdgpu_ib_get - request an IB (Indirect Buffer)
  *
- * @adev: amdgpu_device pointer
- * @vm: amdgpu_vm pointer
+ * @ring: ring index the IB is associated with
  * @size: requested IB size
- * @pool_type: IB pool type (delayed, immediate, direct)
  * @ib: IB object returned
  *
  * Request an IB (all asics).  IBs are allocated using the
@@ -103,10 +101,9 @@ void amdgpu_ib_free(struct amdgpu_device *adev, struct amdgpu_ib *ib,
 /**
  * amdgpu_ib_schedule - schedule an IB (Indirect Buffer) on the ring
  *
- * @ring: ring index the IB is associated with
+ * @adev: amdgpu_device pointer
  * @num_ibs: number of IBs to schedule
  * @ibs: IB objects to schedule
- * @job: job to schedule
  * @f: fence created during this submission
  *
  * Schedule an IB on the associated ring (all asics).

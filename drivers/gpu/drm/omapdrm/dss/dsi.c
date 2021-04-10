@@ -1112,11 +1112,8 @@ static int dsi_runtime_get(struct dsi_data *dsi)
 	DSSDBG("dsi_runtime_get\n");
 
 	r = pm_runtime_get_sync(dsi->dev);
-	if (WARN_ON(r < 0)) {
-		pm_runtime_put_noidle(dsi->dev);
-		return r;
-	}
-	return 0;
+	WARN_ON(r < 0);
+	return r < 0 ? r : 0;
 }
 
 static void dsi_runtime_put(struct dsi_data *dsi)
@@ -1131,12 +1128,13 @@ static void dsi_runtime_put(struct dsi_data *dsi)
 
 static void _dsi_print_reset_status(struct dsi_data *dsi)
 {
+	u32 l;
 	int b0, b1, b2;
 
 	/* A dummy read using the SCP interface to any DSIPHY register is
 	 * required after DSIPHY reset to complete the reset of the DSI complex
 	 * I/O. */
-	dsi_read_reg(dsi, DSI_DSIPHY_CFG5);
+	l = dsi_read_reg(dsi, DSI_DSIPHY_CFG5);
 
 	if (dsi->data->quirks & DSI_QUIRK_REVERSE_TXCLKESC) {
 		b0 = 28;
@@ -3942,6 +3940,7 @@ static int dsi_update(struct omap_dss_device *dssdev, int channel,
 		void (*callback)(int, void *), void *data)
 {
 	struct dsi_data *dsi = to_dsi_data(dssdev);
+	u16 dw, dh;
 
 	dsi_perf_mark_setup(dsi);
 
@@ -3950,8 +3949,11 @@ static int dsi_update(struct omap_dss_device *dssdev, int channel,
 	dsi->framedone_callback = callback;
 	dsi->framedone_data = data;
 
+	dw = dsi->vm.hactive;
+	dh = dsi->vm.vactive;
+
 #ifdef DSI_PERF_MEASURE
-	dsi->update_bytes = dsi->vm.hactive * dsi->vm.vactive *
+	dsi->update_bytes = dw * dh *
 		dsi_get_pixel_size(dsi->pix_fmt) / 8;
 #endif
 	dsi_update_screen_dispc(dsi);

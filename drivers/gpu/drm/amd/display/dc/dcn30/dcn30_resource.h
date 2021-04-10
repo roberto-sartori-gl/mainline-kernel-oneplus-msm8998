@@ -65,8 +65,7 @@ void dcn30_populate_dml_writeback_from_context(
 
 int dcn30_populate_dml_pipes_from_context(
 	struct dc *dc, struct dc_state *context,
-	display_e2e_pipe_params_st *pipes,
-	bool fast_validate);
+	display_e2e_pipe_params_st *pipes);
 
 bool dcn30_acquire_post_bldn_3dlut(
 		struct resource_context *res_ctx,

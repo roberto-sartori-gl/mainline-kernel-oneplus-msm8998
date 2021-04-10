@@ -39,7 +39,7 @@ static void ast_cursor_fini(struct ast_private *ast)
 
 	for (i = 0; i < ARRAY_SIZE(ast->cursor.gbo); ++i) {
 		gbo = ast->cursor.gbo[i];
-		drm_gem_vram_vunmap(gbo, &ast->cursor.map[i]);
+		drm_gem_vram_vunmap(gbo, ast->cursor.vaddr[i]);
 		drm_gem_vram_unpin(gbo);
 		drm_gem_vram_put(gbo);
 	}
@@ -60,7 +60,7 @@ int ast_cursor_init(struct ast_private *ast)
 	struct drm_device *dev = &ast->base;
 	size_t size, i;
 	struct drm_gem_vram_object *gbo;
-	struct dma_buf_map map;
+	void __iomem *vaddr;
 	int ret;
 
 	size = roundup(AST_HWC_SIZE + AST_HWC_SIGNATURE_SIZE, PAGE_SIZE);
@@ -77,15 +77,16 @@ int ast_cursor_init(struct ast_private *ast)
 			drm_gem_vram_put(gbo);
 			goto err_drm_gem_vram_put;
 		}
-		ret = drm_gem_vram_vmap(gbo, &map);
-		if (ret) {
+		vaddr = drm_gem_vram_vmap(gbo);
+		if (IS_ERR(vaddr)) {
+			ret = PTR_ERR(vaddr);
 			drm_gem_vram_unpin(gbo);
 			drm_gem_vram_put(gbo);
 			goto err_drm_gem_vram_put;
 		}
 
 		ast->cursor.gbo[i] = gbo;
-		ast->cursor.map[i] = map;
+		ast->cursor.vaddr[i] = vaddr;
 	}
 
 	return drmm_add_action_or_reset(dev, ast_cursor_release, NULL);
@@ -94,7 +95,7 @@ err_drm_gem_vram_put:
 	while (i) {
 		--i;
 		gbo = ast->cursor.gbo[i];
-		drm_gem_vram_vunmap(gbo, &ast->cursor.map[i]);
+		drm_gem_vram_vunmap(gbo, ast->cursor.vaddr[i]);
 		drm_gem_vram_unpin(gbo);
 		drm_gem_vram_put(gbo);
 	}
@@ -169,7 +170,6 @@ int ast_cursor_blit(struct ast_private *ast, struct drm_framebuffer *fb)
 {
 	struct drm_device *dev = &ast->base;
 	struct drm_gem_vram_object *gbo;
-	struct dma_buf_map map;
 	int ret;
 	void *src;
 	void __iomem *dst;
@@ -183,17 +183,18 @@ int ast_cursor_blit(struct ast_private *ast, struct drm_framebuffer *fb)
 	ret = drm_gem_vram_pin(gbo, 0);
 	if (ret)
 		return ret;
-	ret = drm_gem_vram_vmap(gbo, &map);
-	if (ret)
+	src = drm_gem_vram_vmap(gbo);
+	if (IS_ERR(src)) {
+		ret = PTR_ERR(src);
 		goto err_drm_gem_vram_unpin;
-	src = map.vaddr; /* TODO: Use mapping abstraction properly */
+	}
 
-	dst = ast->cursor.map[ast->cursor.next_index].vaddr_iomem;
+	dst = ast->cursor.vaddr[ast->cursor.next_index];
 
 	/* do data transfer to cursor BO */
 	update_cursor_image(dst, src, fb->width, fb->height);
 
-	drm_gem_vram_vunmap(gbo, &map);
+	drm_gem_vram_vunmap(gbo, src);
 	drm_gem_vram_unpin(gbo);
 
 	return 0;
@@ -256,7 +257,7 @@ void ast_cursor_show(struct ast_private *ast, int x, int y,
 	u8 __iomem *sig;
 	u8 jreg;
 
-	dst = ast->cursor.map[ast->cursor.next_index].vaddr;
+	dst = ast->cursor.vaddr[ast->cursor.next_index];
 
 	sig = dst + AST_HWC_SIZE;
 	writel(x, sig + AST_HWC_SIGNATURE_X);

@@ -131,6 +131,7 @@ struct dpu_kms {
 	bool rpm_enabled;
 
 	struct opp_table *opp_table;
+	bool has_opp_table;
 
 	struct dss_module_power mp;
 

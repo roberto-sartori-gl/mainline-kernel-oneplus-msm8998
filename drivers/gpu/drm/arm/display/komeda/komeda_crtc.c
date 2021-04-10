@@ -74,18 +74,16 @@ static void komeda_crtc_update_clock_ratio(struct komeda_crtc_state *kcrtc_st)
  */
 static int
 komeda_crtc_atomic_check(struct drm_crtc *crtc,
-			 struct drm_atomic_state *state)
+			 struct drm_crtc_state *state)
 {
-	struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state,
-									  crtc);
 	struct komeda_crtc *kcrtc = to_kcrtc(crtc);
-	struct komeda_crtc_state *kcrtc_st = to_kcrtc_st(crtc_state);
+	struct komeda_crtc_state *kcrtc_st = to_kcrtc_st(state);
 	int err;
 
-	if (drm_atomic_crtc_needs_modeset(crtc_state))
+	if (drm_atomic_crtc_needs_modeset(state))
 		komeda_crtc_update_clock_ratio(kcrtc_st);
 
-	if (crtc_state->active) {
+	if (state->active) {
 		err = komeda_build_display_data_flow(kcrtc, kcrtc_st);
 		if (err)
 			return err;
@@ -275,10 +273,8 @@ komeda_crtc_do_flush(struct drm_crtc *crtc,
 
 static void
 komeda_crtc_atomic_enable(struct drm_crtc *crtc,
-			  struct drm_atomic_state *state)
+			  struct drm_crtc_state *old)
 {
-	struct drm_crtc_state *old = drm_atomic_get_old_crtc_state(state,
-								   crtc);
 	pm_runtime_get_sync(crtc->dev->dev);
 	komeda_crtc_prepare(to_kcrtc(crtc));
 	drm_crtc_vblank_on(crtc);
@@ -323,10 +319,8 @@ komeda_crtc_flush_and_wait_for_flip_done(struct komeda_crtc *kcrtc,
 
 static void
 komeda_crtc_atomic_disable(struct drm_crtc *crtc,
-			   struct drm_atomic_state *state)
+			   struct drm_crtc_state *old)
 {
-	struct drm_crtc_state *old = drm_atomic_get_old_crtc_state(state,
-								   crtc);
 	struct komeda_crtc *kcrtc = to_kcrtc(crtc);
 	struct komeda_crtc_state *old_st = to_kcrtc_st(old);
 	struct komeda_pipeline *master = kcrtc->master;
@@ -385,14 +379,10 @@ komeda_crtc_atomic_disable(struct drm_crtc *crtc,
 
 static void
 komeda_crtc_atomic_flush(struct drm_crtc *crtc,
-			 struct drm_atomic_state *state)
+			 struct drm_crtc_state *old)
 {
-	struct drm_crtc_state *crtc_state = drm_atomic_get_new_crtc_state(state,
-									  crtc);
-	struct drm_crtc_state *old = drm_atomic_get_old_crtc_state(state,
-								   crtc);
 	/* commit with modeset will be handled in enable/disable */
-	if (drm_atomic_crtc_needs_modeset(crtc_state))
+	if (drm_atomic_crtc_needs_modeset(crtc->state))
 		return;
 
 	komeda_crtc_do_flush(crtc, old);

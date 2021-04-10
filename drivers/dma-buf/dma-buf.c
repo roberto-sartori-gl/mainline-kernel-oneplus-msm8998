@@ -851,9 +851,6 @@ EXPORT_SYMBOL_GPL(dma_buf_unpin);
  * Returns sg_table containing the scatterlist to be returned; returns ERR_PTR
  * on error. May return -EINTR if it is interrupted by a signal.
  *
- * On success, the DMA addresses and lengths in the returned scatterlist are
- * PAGE_SIZE aligned.
- *
  * A mapping must be unmapped by using dma_buf_unmap_attachment(). Note that
  * the underlying backing storage is pinned for as long as a mapping exists,
  * therefore users/importers should not hold onto a mapping for undue amounts of
@@ -906,24 +903,6 @@ struct sg_table *dma_buf_map_attachment(struct dma_buf_attachment *attach,
 		attach->sgt = sg_table;
 		attach->dir = direction;
 	}
-
-#ifdef CONFIG_DMA_API_DEBUG
-	if (!IS_ERR(sg_table)) {
-		struct scatterlist *sg;
-		u64 addr;
-		int len;
-		int i;
-
-		for_each_sgtable_dma_sg(sg_table, sg, i) {
-			addr = sg_dma_address(sg);
-			len = sg_dma_len(sg);
-			if (!PAGE_ALIGNED(addr) || !PAGE_ALIGNED(len)) {
-				pr_debug("%s: addr %llx or len %x is not page aligned!\n",
-					 __func__, addr, len);
-			}
-		}
-	}
-#endif /* CONFIG_DMA_API_DEBUG */
 
 	return sg_table;
 }
@@ -1122,30 +1101,6 @@ int dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 }
 EXPORT_SYMBOL_GPL(dma_buf_begin_cpu_access);
 
-int dma_buf_begin_cpu_access_partial(struct dma_buf *dmabuf,
-				     enum dma_data_direction direction,
-				     unsigned int offset, unsigned int len)
-{
-	int ret = 0;
-
-	if (WARN_ON(!dmabuf))
-		return -EINVAL;
-
-	if (dmabuf->ops->begin_cpu_access_partial)
-		ret = dmabuf->ops->begin_cpu_access_partial(dmabuf, direction,
-							    offset, len);
-
-	/* Ensure that all fences are waited upon - but we first allow
-	 * the native handler the chance to do so more efficiently if it
-	 * chooses. A double invocation here will be reasonably cheap no-op.
-	 */
-	if (ret == 0)
-		ret = __dma_buf_begin_cpu_access(dmabuf, direction);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(dma_buf_begin_cpu_access_partial);
-
 /**
  * dma_buf_end_cpu_access - Must be called after accessing a dma_buf from the
  * cpu in the kernel context. Calls end_cpu_access to allow exporter-specific
@@ -1172,21 +1127,6 @@ int dma_buf_end_cpu_access(struct dma_buf *dmabuf,
 }
 EXPORT_SYMBOL_GPL(dma_buf_end_cpu_access);
 
-int dma_buf_end_cpu_access_partial(struct dma_buf *dmabuf,
-				   enum dma_data_direction direction,
-				   unsigned int offset, unsigned int len)
-{
-	int ret = 0;
-
-	WARN_ON(!dmabuf);
-
-	if (dmabuf->ops->end_cpu_access_partial)
-		ret = dmabuf->ops->end_cpu_access_partial(dmabuf, direction,
-							  offset, len);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(dma_buf_end_cpu_access_partial);
 
 /**
  * dma_buf_mmap - Setup up a userspace mmap with the given vma
@@ -1248,102 +1188,72 @@ EXPORT_SYMBOL_GPL(dma_buf_mmap);
  * dma_buf_vmap - Create virtual mapping for the buffer object into kernel
  * address space. Same restrictions as for vmap and friends apply.
  * @dmabuf:	[in]	buffer to vmap
- * @map:	[out]	returns the vmap pointer
  *
  * This call may fail due to lack of virtual mapping address space.
  * These calls are optional in drivers. The intended use for them
  * is for mapping objects linear in kernel space for high use objects.
  * Please attempt to use kmap/kunmap before thinking about these interfaces.
  *
- * Returns 0 on success, or a negative errno code otherwise.
+ * Returns NULL on error.
  */
-int dma_buf_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
+void *dma_buf_vmap(struct dma_buf *dmabuf)
 {
-	struct dma_buf_map ptr;
-	int ret = 0;
-
-	dma_buf_map_clear(map);
+	void *ptr;
 
 	if (WARN_ON(!dmabuf))
-		return -EINVAL;
+		return NULL;
 
 	if (!dmabuf->ops->vmap)
-		return -EINVAL;
+		return NULL;
 
 	mutex_lock(&dmabuf->lock);
 	if (dmabuf->vmapping_counter) {
 		dmabuf->vmapping_counter++;
-		BUG_ON(dma_buf_map_is_null(&dmabuf->vmap_ptr));
-		*map = dmabuf->vmap_ptr;
+		BUG_ON(!dmabuf->vmap_ptr);
+		ptr = dmabuf->vmap_ptr;
 		goto out_unlock;
 	}
 
-	BUG_ON(dma_buf_map_is_set(&dmabuf->vmap_ptr));
+	BUG_ON(dmabuf->vmap_ptr);
 
-	ret = dmabuf->ops->vmap(dmabuf, &ptr);
-	if (WARN_ON_ONCE(ret))
+	ptr = dmabuf->ops->vmap(dmabuf);
+	if (WARN_ON_ONCE(IS_ERR(ptr)))
+		ptr = NULL;
+	if (!ptr)
 		goto out_unlock;
 
 	dmabuf->vmap_ptr = ptr;
 	dmabuf->vmapping_counter = 1;
 
-	*map = dmabuf->vmap_ptr;
-
 out_unlock:
 	mutex_unlock(&dmabuf->lock);
-	return ret;
+	return ptr;
 }
 EXPORT_SYMBOL_GPL(dma_buf_vmap);
 
 /**
  * dma_buf_vunmap - Unmap a vmap obtained by dma_buf_vmap.
  * @dmabuf:	[in]	buffer to vunmap
- * @map:	[in]	vmap pointer to vunmap
+ * @vaddr:	[in]	vmap to vunmap
  */
-void dma_buf_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
+void dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr)
 {
 	if (WARN_ON(!dmabuf))
 		return;
 
-	BUG_ON(dma_buf_map_is_null(&dmabuf->vmap_ptr));
+	BUG_ON(!dmabuf->vmap_ptr);
 	BUG_ON(dmabuf->vmapping_counter == 0);
-	BUG_ON(!dma_buf_map_is_equal(&dmabuf->vmap_ptr, map));
+	BUG_ON(dmabuf->vmap_ptr != vaddr);
 
 	mutex_lock(&dmabuf->lock);
 	if (--dmabuf->vmapping_counter == 0) {
 		if (dmabuf->ops->vunmap)
-			dmabuf->ops->vunmap(dmabuf, map);
-		dma_buf_map_clear(&dmabuf->vmap_ptr);
+			dmabuf->ops->vunmap(dmabuf, vaddr);
+		dmabuf->vmap_ptr = NULL;
 	}
 	mutex_unlock(&dmabuf->lock);
 }
 EXPORT_SYMBOL_GPL(dma_buf_vunmap);
-
-int dma_buf_get_flags(struct dma_buf *dmabuf, unsigned long *flags)
-{
-	int ret = 0;
-
-	if (WARN_ON(!dmabuf) || !flags)
-		return -EINVAL;
-
-	if (dmabuf->ops->get_flags)
-		ret = dmabuf->ops->get_flags(dmabuf, flags);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(dma_buf_get_flags);
-
-int dma_buf_get_uuid(struct dma_buf *dmabuf, uuid_t *uuid)
-{
-	if (WARN_ON(!dmabuf) || !uuid)
-		return -EINVAL;
-
-	if (!dmabuf->ops->get_uuid)
-		return -ENODEV;
-
-	return dmabuf->ops->get_uuid(dmabuf, uuid);
-}
-EXPORT_SYMBOL_GPL(dma_buf_get_uuid);
 
 #ifdef CONFIG_DEBUG_FS
 static int dma_buf_debug_show(struct seq_file *s, void *unused)

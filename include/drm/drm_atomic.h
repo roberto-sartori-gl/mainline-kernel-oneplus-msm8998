@@ -308,6 +308,7 @@ struct __drm_private_objs_state {
  * struct drm_atomic_state - the global state object for atomic updates
  * @ref: count of all references to this state (will not be freed until zero)
  * @dev: parent DRM device
+ * @legacy_cursor_update: hint to enforce legacy cursor IOCTL semantics
  * @async_update: hint for asynchronous plane update
  * @planes: pointer to array of structures with per-plane data
  * @crtcs: pointer to array of CRTC pointers
@@ -335,17 +336,6 @@ struct drm_atomic_state {
 	 * drm_atomic_crtc_needs_modeset().
 	 */
 	bool allow_modeset : 1;
-	/**
-	 * @legacy_cursor_update:
-	 *
-	 * Hint to enforce legacy cursor IOCTL semantics.
-	 *
-	 * WARNING: This is thoroughly broken and pretty much impossible to
-	 * implement correctly. Drivers must ignore this and should instead
-	 * implement &drm_plane_helper_funcs.atomic_async_check and
-	 * &drm_plane_helper_funcs.atomic_async_commit hooks. New users of this
-	 * flag are not allowed.
-	 */
 	bool legacy_cursor_update : 1;
 	bool async_update : 1;
 	/**
@@ -783,8 +773,7 @@ void drm_state_dump(struct drm_device *dev, struct drm_printer *p);
 			      (void)(crtc) /* Only to avoid unused-but-set-variable warning */, \
 			     (old_crtc_state) = (__state)->crtcs[__i].old_state, \
 			     (void)(old_crtc_state) /* Only to avoid unused-but-set-variable warning */, \
-			     (new_crtc_state) = (__state)->crtcs[__i].new_state, \
-			     (void)(new_crtc_state) /* Only to avoid unused-but-set-variable warning */, 1))
+			     (new_crtc_state) = (__state)->crtcs[__i].new_state, 1))
 
 /**
  * for_each_old_crtc_in_state - iterate over all CRTCs in an atomic update
@@ -803,7 +792,6 @@ void drm_state_dump(struct drm_device *dev, struct drm_printer *p);
 	     (__i)++)							\
 		for_each_if ((__state)->crtcs[__i].ptr &&		\
 			     ((crtc) = (__state)->crtcs[__i].ptr,	\
-			     (void)(crtc) /* Only to avoid unused-but-set-variable warning */, \
 			     (old_crtc_state) = (__state)->crtcs[__i].old_state, 1))
 
 /**

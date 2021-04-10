@@ -90,8 +90,7 @@ union psr_error_status {
 	struct {
 		unsigned char LINK_CRC_ERROR        :1;
 		unsigned char RFB_STORAGE_ERROR     :1;
-		unsigned char VSC_SDP_ERROR         :1;
-		unsigned char RESERVED              :5;
+		unsigned char RESERVED              :6;
 	} bits;
 	unsigned char raw;
 };

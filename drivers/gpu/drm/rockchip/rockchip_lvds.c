@@ -42,7 +42,7 @@ struct rockchip_lvds;
 		container_of(c, struct rockchip_lvds, encoder)
 
 /**
- * struct rockchip_lvds_soc_data - rockchip lvds Soc private data
+ * rockchip_lvds_soc_data - rockchip lvds Soc private data
  * @probe: LVDS platform probe function
  * @helper_funcs: LVDS connector helper functions
  */

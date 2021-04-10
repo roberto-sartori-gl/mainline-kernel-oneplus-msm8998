@@ -28,11 +28,10 @@
 #ifndef __AST_DRV_H__
 #define __AST_DRV_H__
 
-#include <linux/dma-buf-map.h>
+#include <linux/types.h>
+#include <linux/io.h>
 #include <linux/i2c.h>
 #include <linux/i2c-algo-bit.h>
-#include <linux/io.h>
-#include <linux/types.h>
 
 #include <drm/drm_connector.h>
 #include <drm/drm_crtc.h>
@@ -64,7 +63,6 @@ enum ast_chip {
 	AST2300,
 	AST2400,
 	AST2500,
-	AST2600,
 };
 
 enum ast_tx_chip {
@@ -133,7 +131,7 @@ struct ast_private {
 
 	struct {
 		struct drm_gem_vram_object *gbo[AST_DEFAULT_HWC_NUM];
-		struct dma_buf_map map[AST_DEFAULT_HWC_NUM];
+		void __iomem *vaddr[AST_DEFAULT_HWC_NUM];
 		unsigned int next_index;
 	} cursor;
 
@@ -161,7 +159,7 @@ static inline struct ast_private *to_ast_private(struct drm_device *dev)
 	return container_of(dev, struct ast_private, base);
 }
 
-struct ast_private *ast_device_create(const struct drm_driver *drv,
+struct ast_private *ast_device_create(struct drm_driver *drv,
 				      struct pci_dev *pdev,
 				      unsigned long flags);
 

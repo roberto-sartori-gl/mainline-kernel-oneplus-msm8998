@@ -210,9 +210,7 @@ static void jpeg_v1_0_decode_ring_insert_end(struct amdgpu_ring *ring)
  * jpeg_v1_0_decode_ring_emit_fence - emit an fence & trap command
  *
  * @ring: amdgpu_ring pointer
- * @addr: address
- * @seq: sequence number
- * @flags: fence related flags
+ * @fence: fence to emit
  *
  * Write a fence and a trap command to the ring.
  */
@@ -284,9 +282,7 @@ static void jpeg_v1_0_decode_ring_emit_fence(struct amdgpu_ring *ring, u64 addr,
  * jpeg_v1_0_decode_ring_emit_ib - execute indirect buffer
  *
  * @ring: amdgpu_ring pointer
- * @job: job to retrieve vmid from
  * @ib: indirect buffer to execute
- * @flags: unused
  *
  * Write ring commands to execute the indirect buffer.
  */
@@ -515,7 +511,6 @@ void jpeg_v1_0_sw_fini(void *handle)
  * jpeg_v1_0_start - start JPEG block
  *
  * @adev: amdgpu_device pointer
- * @mode: SPG or DPG mode
  *
  * Setup and start the JPEG block
  */

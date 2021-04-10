@@ -99,7 +99,7 @@ bool dce_dmcu_load_iram(struct dmcu *dmcu,
 	return true;
 }
 
-static void dce_get_dmcu_psr_state(struct dmcu *dmcu, enum dc_psr_state *state)
+static void dce_get_dmcu_psr_state(struct dmcu *dmcu, uint32_t *psr_state)
 {
 	struct dce_dmcu *dmcu_dce = TO_DCE_DMCU(dmcu);
 
@@ -114,7 +114,7 @@ static void dce_get_dmcu_psr_state(struct dmcu *dmcu, enum dc_psr_state *state)
 	REG_WRITE(DMCU_IRAM_RD_CTRL, psr_state_offset);
 
 	/* Read data from IRAM_RD_DATA in DMCU_IRAM_RD_DATA*/
-	*state = (enum dc_psr_state)REG_READ(DMCU_IRAM_RD_DATA);
+	*psr_state = REG_READ(DMCU_IRAM_RD_DATA);
 
 	/* Disable write access to IRAM after finished using IRAM
 	 * in order to allow dynamic sleep state
@@ -129,7 +129,7 @@ static void dce_dmcu_set_psr_enable(struct dmcu *dmcu, bool enable, bool wait)
 	unsigned int dmcu_wait_reg_ready_interval = 100;
 
 	unsigned int retryCount;
-	enum dc_psr_state state = PSR_STATE0;
+	uint32_t psr_state = 0;
 
 	/* waitDMCUReadyForCmd */
 	REG_WAIT(MASTER_COMM_CNTL_REG, MASTER_COMM_INTERRUPT, 0,
@@ -148,12 +148,12 @@ static void dce_dmcu_set_psr_enable(struct dmcu *dmcu, bool enable, bool wait)
 	REG_UPDATE(MASTER_COMM_CNTL_REG, MASTER_COMM_INTERRUPT, 1);
 	if (wait == true) {
 		for (retryCount = 0; retryCount <= 100; retryCount++) {
-			dce_get_dmcu_psr_state(dmcu, &state);
+			dce_get_dmcu_psr_state(dmcu, &psr_state);
 			if (enable) {
-				if (state != PSR_STATE0)
+				if (psr_state != 0)
 					break;
 			} else {
-				if (state == PSR_STATE0)
+				if (psr_state == 0)
 					break;
 			}
 			udelay(10);
@@ -513,7 +513,7 @@ static bool dcn10_dmcu_load_iram(struct dmcu *dmcu,
 	return true;
 }
 
-static void dcn10_get_dmcu_psr_state(struct dmcu *dmcu, enum dc_psr_state *state)
+static void dcn10_get_dmcu_psr_state(struct dmcu *dmcu, uint32_t *psr_state)
 {
 	struct dce_dmcu *dmcu_dce = TO_DCE_DMCU(dmcu);
 
@@ -532,7 +532,7 @@ static void dcn10_get_dmcu_psr_state(struct dmcu *dmcu, enum dc_psr_state *state
 	REG_WRITE(DMCU_IRAM_RD_CTRL, psr_state_offset);
 
 	/* Read data from IRAM_RD_DATA in DMCU_IRAM_RD_DATA*/
-	*state = (enum dc_psr_state)REG_READ(DMCU_IRAM_RD_DATA);
+	*psr_state = REG_READ(DMCU_IRAM_RD_DATA);
 
 	/* Disable write access to IRAM after finished using IRAM
 	 * in order to allow dynamic sleep state
@@ -547,7 +547,7 @@ static void dcn10_dmcu_set_psr_enable(struct dmcu *dmcu, bool enable, bool wait)
 	unsigned int dmcu_wait_reg_ready_interval = 100;
 
 	unsigned int retryCount;
-	enum dc_psr_state state = PSR_STATE0;
+	uint32_t psr_state = 0;
 
 	/* If microcontroller is not running, do nothing */
 	if (dmcu->dmcu_state != DMCU_RUNNING)
@@ -575,12 +575,12 @@ static void dcn10_dmcu_set_psr_enable(struct dmcu *dmcu, bool enable, bool wait)
 	 */
 	if (wait == true) {
 		for (retryCount = 0; retryCount <= 1000; retryCount++) {
-			dcn10_get_dmcu_psr_state(dmcu, &state);
+			dcn10_get_dmcu_psr_state(dmcu, &psr_state);
 			if (enable) {
-				if (state != PSR_STATE0)
+				if (psr_state != 0)
 					break;
 			} else {
-				if (state == PSR_STATE0)
+				if (psr_state == 0)
 					break;
 			}
 			udelay(500);

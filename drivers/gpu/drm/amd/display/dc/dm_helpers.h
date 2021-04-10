@@ -35,6 +35,7 @@
 
 struct dp_mst_stream_allocation_table;
 
+#ifdef CONFIG_DRM_AMD_DC_DCN3_0
 /*
  * Allocate memory accessible by the GPU
  *
@@ -56,6 +57,7 @@ void dm_helpers_free_gpu_mem(
 		enum dc_gpu_mem_alloc_type type,
 		void *pvMem);
 
+#endif
 enum dc_edid_status dm_helpers_parse_edid_caps(
 	struct dc_context *ctx,
 	const struct dc_edid *edid,
@@ -113,7 +115,7 @@ bool dm_helpers_dp_mst_start_top_mgr(
 
 void dm_helpers_dp_mst_stop_top_mgr(
 		struct dc_context *ctx,
-		struct dc_link *link);
+		const struct dc_link *link);
 /**
  * OS specific aux read callback.
  */

@@ -39,18 +39,9 @@ static struct i915_global_object {
 	struct kmem_cache *slab_objects;
 } global;
 
-static const struct drm_gem_object_funcs i915_gem_object_funcs;
-
 struct drm_i915_gem_object *i915_gem_object_alloc(void)
 {
-	struct drm_i915_gem_object *obj;
-
-	obj = kmem_cache_zalloc(global.slab_objects, GFP_KERNEL);
-	if (!obj)
-		return NULL;
-	obj->base.funcs = &i915_gem_object_funcs;
-
-	return obj;
+	return kmem_cache_zalloc(global.slab_objects, GFP_KERNEL);
 }
 
 void i915_gem_object_free(struct drm_i915_gem_object *obj)
@@ -82,8 +73,6 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 	obj->mm.madv = I915_MADV_WILLNEED;
 	INIT_RADIX_TREE(&obj->mm.get_page.radix, GFP_KERNEL | __GFP_NOWARN);
 	mutex_init(&obj->mm.get_page.lock);
-	INIT_RADIX_TREE(&obj->mm.get_dma_page.radix, GFP_KERNEL | __GFP_NOWARN);
-	mutex_init(&obj->mm.get_dma_page.lock);
 
 	if (IS_ENABLED(CONFIG_LOCKDEP) && i915_gem_object_is_shrinkable(obj))
 		i915_gem_shrinker_taints_mutex(to_i915(obj->base.dev),
@@ -112,7 +101,7 @@ void i915_gem_object_set_cache_coherency(struct drm_i915_gem_object *obj,
 		!(obj->cache_coherent & I915_BO_CACHE_COHERENT_FOR_WRITE);
 }
 
-static void i915_gem_close_object(struct drm_gem_object *gem, struct drm_file *file)
+void i915_gem_close_object(struct drm_gem_object *gem, struct drm_file *file)
 {
 	struct drm_i915_gem_object *obj = to_intel_bo(gem);
 	struct drm_i915_file_private *fpriv = file->driver_priv;
@@ -275,7 +264,7 @@ static void __i915_gem_free_work(struct work_struct *work)
 	i915_gem_flush_free_objects(i915);
 }
 
-static void i915_gem_free_object(struct drm_gem_object *gem_obj)
+void i915_gem_free_object(struct drm_gem_object *gem_obj)
 {
 	struct drm_i915_gem_object *obj = to_intel_bo(gem_obj);
 	struct drm_i915_private *i915 = to_i915(obj->base.dev);
@@ -413,12 +402,6 @@ int __init i915_global_objects_init(void)
 	i915_global_register(&global.base);
 	return 0;
 }
-
-static const struct drm_gem_object_funcs i915_gem_object_funcs = {
-	.free = i915_gem_free_object,
-	.close = i915_gem_close_object,
-	.export = i915_gem_prime_export,
-};
 
 #if IS_ENABLED(CONFIG_DRM_I915_SELFTEST)
 #include "selftests/huge_gem_object.c"

@@ -18,7 +18,8 @@
 #include "msm_gpu.h"
 #include "msm_mmu.h"
 
-static void update_inactive(struct msm_gem_object *msm_obj);
+static void msm_gem_vunmap_locked(struct drm_gem_object *obj);
+
 
 static dma_addr_t physaddr(struct drm_gem_object *obj)
 {
@@ -176,15 +177,15 @@ struct page **msm_gem_get_pages(struct drm_gem_object *obj)
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct page **p;
 
-	msm_gem_lock(obj);
+	mutex_lock(&msm_obj->lock);
 
 	if (WARN_ON(msm_obj->madv != MSM_MADV_WILLNEED)) {
-		msm_gem_unlock(obj);
+		mutex_unlock(&msm_obj->lock);
 		return ERR_PTR(-EBUSY);
 	}
 
 	p = get_pages(obj);
-	msm_gem_unlock(obj);
+	mutex_unlock(&msm_obj->lock);
 	return p;
 }
 
@@ -235,7 +236,7 @@ int msm_gem_mmap(struct file *filp, struct vm_area_struct *vma)
 	return msm_gem_mmap_obj(vma->vm_private_data, vma);
 }
 
-static vm_fault_t msm_gem_fault(struct vm_fault *vmf)
+vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
 	struct drm_gem_object *obj = vma->vm_private_data;
@@ -250,14 +251,14 @@ static vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 	 * vm_ops.open/drm_gem_mmap_obj and close get and put
 	 * a reference on obj. So, we dont need to hold one here.
 	 */
-	err = msm_gem_lock_interruptible(obj);
+	err = mutex_lock_interruptible(&msm_obj->lock);
 	if (err) {
 		ret = VM_FAULT_NOPAGE;
 		goto out;
 	}
 
 	if (WARN_ON(msm_obj->madv != MSM_MADV_WILLNEED)) {
-		msm_gem_unlock(obj);
+		mutex_unlock(&msm_obj->lock);
 		return VM_FAULT_SIGBUS;
 	}
 
@@ -278,7 +279,7 @@ static vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 
 	ret = vmf_insert_mixed(vma, vmf->address, __pfn_to_pfn_t(pfn, PFN_DEV));
 out_unlock:
-	msm_gem_unlock(obj);
+	mutex_unlock(&msm_obj->lock);
 out:
 	return ret;
 }
@@ -287,9 +288,10 @@ out:
 static uint64_t mmap_offset(struct drm_gem_object *obj)
 {
 	struct drm_device *dev = obj->dev;
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	int ret;
 
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&msm_obj->lock));
 
 	/* Make it mmapable */
 	ret = drm_gem_create_mmap_offset(obj);
@@ -305,10 +307,11 @@ static uint64_t mmap_offset(struct drm_gem_object *obj)
 uint64_t msm_gem_mmap_offset(struct drm_gem_object *obj)
 {
 	uint64_t offset;
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
-	msm_gem_lock(obj);
+	mutex_lock(&msm_obj->lock);
 	offset = mmap_offset(obj);
-	msm_gem_unlock(obj);
+	mutex_unlock(&msm_obj->lock);
 	return offset;
 }
 
@@ -318,7 +321,7 @@ static struct msm_gem_vma *add_vma(struct drm_gem_object *obj,
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vma *vma;
 
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&msm_obj->lock));
 
 	vma = kzalloc(sizeof(*vma), GFP_KERNEL);
 	if (!vma)
@@ -337,7 +340,7 @@ static struct msm_gem_vma *lookup_vma(struct drm_gem_object *obj,
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vma *vma;
 
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&msm_obj->lock));
 
 	list_for_each_entry(vma, &msm_obj->vmas, list) {
 		if (vma->aspace == aspace)
@@ -356,45 +359,33 @@ static void del_vma(struct msm_gem_vma *vma)
 	kfree(vma);
 }
 
-/* Called with msm_obj locked */
+/* Called with msm_obj->lock locked */
 static void
-put_iova_spaces(struct drm_gem_object *obj)
-{
-	struct msm_gem_object *msm_obj = to_msm_bo(obj);
-	struct msm_gem_vma *vma;
-
-	WARN_ON(!msm_gem_is_locked(obj));
-
-	list_for_each_entry(vma, &msm_obj->vmas, list) {
-		if (vma->aspace) {
-			msm_gem_purge_vma(vma->aspace, vma);
-			msm_gem_close_vma(vma->aspace, vma);
-		}
-	}
-}
-
-/* Called with msm_obj locked */
-static void
-put_iova_vmas(struct drm_gem_object *obj)
+put_iova(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vma *vma, *tmp;
 
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&msm_obj->lock));
 
 	list_for_each_entry_safe(vma, tmp, &msm_obj->vmas, list) {
+		if (vma->aspace) {
+			msm_gem_purge_vma(vma->aspace, vma);
+			msm_gem_close_vma(vma->aspace, vma);
+		}
 		del_vma(vma);
 	}
 }
 
-static int get_iova_locked(struct drm_gem_object *obj,
+static int msm_gem_get_iova_locked(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace, uint64_t *iova,
 		u64 range_start, u64 range_end)
 {
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vma *vma;
 	int ret = 0;
 
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&msm_obj->lock));
 
 	vma = lookup_vma(obj, aspace);
 
@@ -429,7 +420,7 @@ static int msm_gem_pin_iova(struct drm_gem_object *obj,
 	if (msm_obj->flags & MSM_BO_MAP_PRIV)
 		prot |= IOMMU_PRIV;
 
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&msm_obj->lock));
 
 	if (WARN_ON(msm_obj->madv != MSM_MADV_WILLNEED))
 		return -EBUSY;
@@ -446,27 +437,6 @@ static int msm_gem_pin_iova(struct drm_gem_object *obj,
 			msm_obj->sgt, obj->size >> PAGE_SHIFT);
 }
 
-static int get_and_pin_iova_range_locked(struct drm_gem_object *obj,
-		struct msm_gem_address_space *aspace, uint64_t *iova,
-		u64 range_start, u64 range_end)
-{
-	u64 local;
-	int ret;
-
-	WARN_ON(!msm_gem_is_locked(obj));
-
-	ret = get_iova_locked(obj, aspace, &local,
-		range_start, range_end);
-
-	if (!ret)
-		ret = msm_gem_pin_iova(obj, aspace);
-
-	if (!ret)
-		*iova = local;
-
-	return ret;
-}
-
 /*
  * get iova and pin it. Should have a matching put
  * limits iova to specified range (in pages)
@@ -475,19 +445,23 @@ int msm_gem_get_and_pin_iova_range(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace, uint64_t *iova,
 		u64 range_start, u64 range_end)
 {
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	u64 local;
 	int ret;
 
-	msm_gem_lock(obj);
-	ret = get_and_pin_iova_range_locked(obj, aspace, iova, range_start, range_end);
-	msm_gem_unlock(obj);
+	mutex_lock(&msm_obj->lock);
 
+	ret = msm_gem_get_iova_locked(obj, aspace, &local,
+		range_start, range_end);
+
+	if (!ret)
+		ret = msm_gem_pin_iova(obj, aspace);
+
+	if (!ret)
+		*iova = local;
+
+	mutex_unlock(&msm_obj->lock);
 	return ret;
-}
-
-int msm_gem_get_and_pin_iova_locked(struct drm_gem_object *obj,
-		struct msm_gem_address_space *aspace, uint64_t *iova)
-{
-	return get_and_pin_iova_range_locked(obj, aspace, iova, 0, U64_MAX);
 }
 
 /* get iova and pin it. Should have a matching put */
@@ -504,11 +478,12 @@ int msm_gem_get_and_pin_iova(struct drm_gem_object *obj,
 int msm_gem_get_iova(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace, uint64_t *iova)
 {
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	int ret;
 
-	msm_gem_lock(obj);
-	ret = get_iova_locked(obj, aspace, iova, 0, U64_MAX);
-	msm_gem_unlock(obj);
+	mutex_lock(&msm_obj->lock);
+	ret = msm_gem_get_iova_locked(obj, aspace, iova, 0, U64_MAX);
+	mutex_unlock(&msm_obj->lock);
 
 	return ret;
 }
@@ -519,30 +494,15 @@ int msm_gem_get_iova(struct drm_gem_object *obj,
 uint64_t msm_gem_iova(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace)
 {
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct msm_gem_vma *vma;
 
-	msm_gem_lock(obj);
+	mutex_lock(&msm_obj->lock);
 	vma = lookup_vma(obj, aspace);
-	msm_gem_unlock(obj);
+	mutex_unlock(&msm_obj->lock);
 	WARN_ON(!vma);
 
 	return vma ? vma->iova : 0;
-}
-
-/*
- * Locked variant of msm_gem_unpin_iova()
- */
-void msm_gem_unpin_iova_locked(struct drm_gem_object *obj,
-		struct msm_gem_address_space *aspace)
-{
-	struct msm_gem_vma *vma;
-
-	WARN_ON(!msm_gem_is_locked(obj));
-
-	vma = lookup_vma(obj, aspace);
-
-	if (!WARN_ON(!vma))
-		msm_gem_unmap_vma(aspace, vma);
 }
 
 /*
@@ -553,9 +513,16 @@ void msm_gem_unpin_iova_locked(struct drm_gem_object *obj,
 void msm_gem_unpin_iova(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace)
 {
-	msm_gem_lock(obj);
-	msm_gem_unpin_iova_locked(obj, aspace);
-	msm_gem_unlock(obj);
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	struct msm_gem_vma *vma;
+
+	mutex_lock(&msm_obj->lock);
+	vma = lookup_vma(obj, aspace);
+
+	if (!WARN_ON(!vma))
+		msm_gem_unmap_vma(aspace, vma);
+
+	mutex_unlock(&msm_obj->lock);
 }
 
 int msm_gem_dumb_create(struct drm_file *file, struct drm_device *dev,
@@ -593,22 +560,23 @@ static void *get_vaddr(struct drm_gem_object *obj, unsigned madv)
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	int ret = 0;
 
-	WARN_ON(!msm_gem_is_locked(obj));
-
 	if (obj->import_attach)
 		return ERR_PTR(-ENODEV);
+
+	mutex_lock(&msm_obj->lock);
 
 	if (WARN_ON(msm_obj->madv > madv)) {
 		DRM_DEV_ERROR(obj->dev->dev, "Invalid madv state: %u vs %u\n",
 			msm_obj->madv, madv);
+		mutex_unlock(&msm_obj->lock);
 		return ERR_PTR(-EBUSY);
 	}
 
 	/* increment vmap_count *before* vmap() call, so shrinker can
-	 * check vmap_count (is_vunmapable()) outside of msm_obj lock.
+	 * check vmap_count (is_vunmapable()) outside of msm_obj->lock.
 	 * This guarantees that we won't try to msm_gem_vunmap() this
 	 * same object from within the vmap() call (while we already
-	 * hold msm_obj lock)
+	 * hold msm_obj->lock)
 	 */
 	msm_obj->vmap_count++;
 
@@ -626,27 +594,18 @@ static void *get_vaddr(struct drm_gem_object *obj, unsigned madv)
 		}
 	}
 
+	mutex_unlock(&msm_obj->lock);
 	return msm_obj->vaddr;
 
 fail:
 	msm_obj->vmap_count--;
+	mutex_unlock(&msm_obj->lock);
 	return ERR_PTR(ret);
-}
-
-void *msm_gem_get_vaddr_locked(struct drm_gem_object *obj)
-{
-	return get_vaddr(obj, MSM_MADV_WILLNEED);
 }
 
 void *msm_gem_get_vaddr(struct drm_gem_object *obj)
 {
-	void *ret;
-
-	msm_gem_lock(obj);
-	ret = msm_gem_get_vaddr_locked(obj);
-	msm_gem_unlock(obj);
-
-	return ret;
+	return get_vaddr(obj, MSM_MADV_WILLNEED);
 }
 
 /*
@@ -660,21 +619,14 @@ void *msm_gem_get_vaddr_active(struct drm_gem_object *obj)
 	return get_vaddr(obj, __MSM_MADV_PURGED);
 }
 
-void msm_gem_put_vaddr_locked(struct drm_gem_object *obj)
+void msm_gem_put_vaddr(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
-	WARN_ON(!msm_gem_is_locked(obj));
+	mutex_lock(&msm_obj->lock);
 	WARN_ON(msm_obj->vmap_count < 1);
-
 	msm_obj->vmap_count--;
-}
-
-void msm_gem_put_vaddr(struct drm_gem_object *obj)
-{
-	msm_gem_lock(obj);
-	msm_gem_put_vaddr_locked(obj);
-	msm_gem_unlock(obj);
+	mutex_unlock(&msm_obj->lock);
 }
 
 /* Update madvise status, returns true if not purged, else
@@ -684,39 +636,36 @@ int msm_gem_madvise(struct drm_gem_object *obj, unsigned madv)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
-	msm_gem_lock(obj);
+	mutex_lock(&msm_obj->lock);
+
+	WARN_ON(!mutex_is_locked(&obj->dev->struct_mutex));
 
 	if (msm_obj->madv != __MSM_MADV_PURGED)
 		msm_obj->madv = madv;
 
 	madv = msm_obj->madv;
 
-	/* If the obj is inactive, we might need to move it
-	 * between inactive lists
-	 */
-	if (msm_obj->active_count == 0)
-		update_inactive(msm_obj);
-
-	msm_gem_unlock(obj);
+	mutex_unlock(&msm_obj->lock);
 
 	return (madv != __MSM_MADV_PURGED);
 }
 
-void msm_gem_purge(struct drm_gem_object *obj)
+void msm_gem_purge(struct drm_gem_object *obj, enum msm_gem_lock subclass)
 {
 	struct drm_device *dev = obj->dev;
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
+	WARN_ON(!mutex_is_locked(&dev->struct_mutex));
 	WARN_ON(!is_purgeable(msm_obj));
 	WARN_ON(obj->import_attach);
 
-	put_iova_spaces(obj);
+	mutex_lock_nested(&msm_obj->lock, subclass);
 
-	msm_gem_vunmap(obj);
+	put_iova(obj);
+
+	msm_gem_vunmap_locked(obj);
 
 	put_pages(obj);
-
-	put_iova_vmas(obj);
 
 	msm_obj->madv = __MSM_MADV_PURGED;
 
@@ -732,19 +681,30 @@ void msm_gem_purge(struct drm_gem_object *obj)
 
 	invalidate_mapping_pages(file_inode(obj->filp)->i_mapping,
 			0, (loff_t)-1);
+
+	mutex_unlock(&msm_obj->lock);
 }
 
-void msm_gem_vunmap(struct drm_gem_object *obj)
+static void msm_gem_vunmap_locked(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&msm_obj->lock));
 
 	if (!msm_obj->vaddr || WARN_ON(!is_vunmapable(msm_obj)))
 		return;
 
 	vunmap(msm_obj->vaddr);
 	msm_obj->vaddr = NULL;
+}
+
+void msm_gem_vunmap(struct drm_gem_object *obj, enum msm_gem_lock subclass)
+{
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+
+	mutex_lock_nested(&msm_obj->lock, subclass);
+	msm_gem_vunmap_locked(obj);
+	mutex_unlock(&msm_obj->lock);
 }
 
 /* must be called before _move_to_active().. */
@@ -785,46 +745,28 @@ int msm_gem_sync_object(struct drm_gem_object *obj,
 void msm_gem_active_get(struct drm_gem_object *obj, struct msm_gpu *gpu)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
-	struct msm_drm_private *priv = obj->dev->dev_private;
-
-	might_sleep();
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&obj->dev->struct_mutex));
 	WARN_ON(msm_obj->madv != MSM_MADV_WILLNEED);
 
-	if (msm_obj->active_count++ == 0) {
-		mutex_lock(&priv->mm_lock);
+	if (!atomic_fetch_inc(&msm_obj->active_count)) {
+		msm_obj->gpu = gpu;
 		list_del_init(&msm_obj->mm_list);
 		list_add_tail(&msm_obj->mm_list, &gpu->active_list);
-		mutex_unlock(&priv->mm_lock);
 	}
 }
 
 void msm_gem_active_put(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	struct msm_drm_private *priv = obj->dev->dev_private;
 
-	might_sleep();
-	WARN_ON(!msm_gem_is_locked(obj));
+	WARN_ON(!mutex_is_locked(&obj->dev->struct_mutex));
 
-	if (--msm_obj->active_count == 0) {
-		update_inactive(msm_obj);
+	if (!atomic_dec_return(&msm_obj->active_count)) {
+		msm_obj->gpu = NULL;
+		list_del_init(&msm_obj->mm_list);
+		list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
 	}
-}
-
-static void update_inactive(struct msm_gem_object *msm_obj)
-{
-	struct msm_drm_private *priv = msm_obj->base.dev->dev_private;
-
-	mutex_lock(&priv->mm_lock);
-	WARN_ON(msm_obj->active_count != 0);
-
-	list_del_init(&msm_obj->mm_list);
-	if (msm_obj->madv == MSM_MADV_WILLNEED)
-		list_add_tail(&msm_obj->mm_list, &priv->inactive_willneed);
-	else
-		list_add_tail(&msm_obj->mm_list, &priv->inactive_dontneed);
-
-	mutex_unlock(&priv->mm_lock);
 }
 
 int msm_gem_cpu_prep(struct drm_gem_object *obj, uint32_t op, ktime_t *timeout)
@@ -873,7 +815,7 @@ void msm_gem_describe(struct drm_gem_object *obj, struct seq_file *m)
 	uint64_t off = drm_vma_node_start(&obj->vma_node);
 	const char *madv;
 
-	msm_gem_lock(obj);
+	mutex_lock(&msm_obj->lock);
 
 	switch (msm_obj->madv) {
 	case __MSM_MADV_PURGED:
@@ -941,7 +883,7 @@ void msm_gem_describe(struct drm_gem_object *obj, struct seq_file *m)
 		describe_fence(fence, "Exclusive", m);
 	rcu_read_unlock();
 
-	msm_gem_unlock(obj);
+	mutex_unlock(&msm_obj->lock);
 }
 
 void msm_gem_describe_objects(struct list_head *list, struct seq_file *m)
@@ -970,16 +912,25 @@ void msm_gem_free_object(struct drm_gem_object *obj)
 	struct drm_device *dev = obj->dev;
 	struct msm_drm_private *priv = dev->dev_private;
 
-	mutex_lock(&priv->mm_lock);
-	list_del(&msm_obj->mm_list);
-	mutex_unlock(&priv->mm_lock);
+	if (llist_add(&msm_obj->freed, &priv->free_list))
+		queue_work(priv->wq, &priv->free_work);
+}
 
-	msm_gem_lock(obj);
+static void free_object(struct msm_gem_object *msm_obj)
+{
+	struct drm_gem_object *obj = &msm_obj->base;
+	struct drm_device *dev = obj->dev;
+
+	WARN_ON(!mutex_is_locked(&dev->struct_mutex));
 
 	/* object should not be on active list: */
 	WARN_ON(is_active(msm_obj));
 
-	put_iova_spaces(obj);
+	list_del(&msm_obj->mm_list);
+
+	mutex_lock(&msm_obj->lock);
+
+	put_iova(obj);
 
 	if (obj->import_attach) {
 		WARN_ON(msm_obj->vaddr);
@@ -990,23 +941,39 @@ void msm_gem_free_object(struct drm_gem_object *obj)
 		if (msm_obj->pages)
 			kvfree(msm_obj->pages);
 
-		/* dma_buf_detach() grabs resv lock, so we need to unlock
-		 * prior to drm_prime_gem_destroy
-		 */
-		msm_gem_unlock(obj);
-
 		drm_prime_gem_destroy(obj, msm_obj->sgt);
 	} else {
-		msm_gem_vunmap(obj);
+		msm_gem_vunmap_locked(obj);
 		put_pages(obj);
-		msm_gem_unlock(obj);
 	}
-
-	put_iova_vmas(obj);
 
 	drm_gem_object_release(obj);
 
+	mutex_unlock(&msm_obj->lock);
 	kfree(msm_obj);
+}
+
+void msm_gem_free_work(struct work_struct *work)
+{
+	struct msm_drm_private *priv =
+		container_of(work, struct msm_drm_private, free_work);
+	struct drm_device *dev = priv->dev;
+	struct llist_node *freed;
+	struct msm_gem_object *msm_obj, *next;
+
+	while ((freed = llist_del_all(&priv->free_list))) {
+
+		mutex_lock(&dev->struct_mutex);
+
+		llist_for_each_entry_safe(msm_obj, next,
+					  freed, freed)
+			free_object(msm_obj);
+
+		mutex_unlock(&dev->struct_mutex);
+
+		if (need_resched())
+			break;
+	}
 }
 
 /* convenience method to construct a GEM buffer object, and userspace handle */
@@ -1033,22 +1000,6 @@ int msm_gem_new_handle(struct drm_device *dev, struct drm_file *file,
 	return ret;
 }
 
-static const struct vm_operations_struct vm_ops = {
-	.fault = msm_gem_fault,
-	.open = drm_gem_vm_open,
-	.close = drm_gem_vm_close,
-};
-
-static const struct drm_gem_object_funcs msm_gem_object_funcs = {
-	.free = msm_gem_free_object,
-	.pin = msm_gem_prime_pin,
-	.unpin = msm_gem_prime_unpin,
-	.get_sg_table = msm_gem_prime_get_sg_table,
-	.vmap = msm_gem_prime_vmap,
-	.vunmap = msm_gem_prime_vunmap,
-	.vm_ops = &vm_ops,
-};
-
 static int msm_gem_new_impl(struct drm_device *dev,
 		uint32_t size, uint32_t flags,
 		struct drm_gem_object **obj)
@@ -1070,6 +1021,8 @@ static int msm_gem_new_impl(struct drm_device *dev,
 	if (!msm_obj)
 		return -ENOMEM;
 
+	mutex_init(&msm_obj->lock);
+
 	msm_obj->flags = flags;
 	msm_obj->madv = MSM_MADV_WILLNEED;
 
@@ -1077,7 +1030,6 @@ static int msm_gem_new_impl(struct drm_device *dev,
 	INIT_LIST_HEAD(&msm_obj->vmas);
 
 	*obj = &msm_obj->base;
-	(*obj)->funcs = &msm_gem_object_funcs;
 
 	return 0;
 }
@@ -1117,10 +1069,10 @@ static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 		struct msm_gem_vma *vma;
 		struct page **pages;
 
-		msm_gem_lock(obj);
+		mutex_lock(&msm_obj->lock);
 
 		vma = add_vma(obj, NULL);
-		msm_gem_unlock(obj);
+		mutex_unlock(&msm_obj->lock);
 		if (IS_ERR(vma)) {
 			ret = PTR_ERR(vma);
 			goto fail;
@@ -1150,19 +1102,19 @@ static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 		mapping_set_gfp_mask(obj->filp->f_mapping, GFP_HIGHUSER);
 	}
 
-	mutex_lock(&priv->mm_lock);
-	/* Initially obj is idle, obj->madv == WILLNEED: */
-	list_add_tail(&msm_obj->mm_list, &priv->inactive_willneed);
-	mutex_unlock(&priv->mm_lock);
+	if (struct_mutex_locked) {
+		WARN_ON(!mutex_is_locked(&dev->struct_mutex));
+		list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
+	} else {
+		mutex_lock(&dev->struct_mutex);
+		list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
+		mutex_unlock(&dev->struct_mutex);
+	}
 
 	return obj;
 
 fail:
-	if (struct_mutex_locked) {
-		drm_gem_object_put_locked(obj);
-	} else {
-		drm_gem_object_put(obj);
-	}
+	drm_gem_object_put(obj);
 	return ERR_PTR(ret);
 }
 
@@ -1204,26 +1156,26 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 	npages = size / PAGE_SIZE;
 
 	msm_obj = to_msm_bo(obj);
-	msm_gem_lock(obj);
+	mutex_lock(&msm_obj->lock);
 	msm_obj->sgt = sgt;
 	msm_obj->pages = kvmalloc_array(npages, sizeof(struct page *), GFP_KERNEL);
 	if (!msm_obj->pages) {
-		msm_gem_unlock(obj);
+		mutex_unlock(&msm_obj->lock);
 		ret = -ENOMEM;
 		goto fail;
 	}
 
 	ret = drm_prime_sg_to_page_addr_arrays(sgt, msm_obj->pages, NULL, npages);
 	if (ret) {
-		msm_gem_unlock(obj);
+		mutex_unlock(&msm_obj->lock);
 		goto fail;
 	}
 
-	msm_gem_unlock(obj);
+	mutex_unlock(&msm_obj->lock);
 
-	mutex_lock(&priv->mm_lock);
-	list_add_tail(&msm_obj->mm_list, &priv->inactive_willneed);
-	mutex_unlock(&priv->mm_lock);
+	mutex_lock(&dev->struct_mutex);
+	list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
+	mutex_unlock(&dev->struct_mutex);
 
 	return obj;
 

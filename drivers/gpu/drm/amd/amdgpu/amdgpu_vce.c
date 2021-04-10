@@ -90,7 +90,6 @@ static int amdgpu_vce_get_destroy_msg(struct amdgpu_ring *ring, uint32_t handle,
  * amdgpu_vce_init - allocate memory, load vce firmware
  *
  * @adev: amdgpu_device pointer
- * @size: size for the new BO
  *
  * First step to get VCE online, allocate memory and load the firmware
  */
@@ -429,9 +428,9 @@ void amdgpu_vce_free_handles(struct amdgpu_device *adev, struct drm_file *filp)
 /**
  * amdgpu_vce_get_create_msg - generate a VCE create msg
  *
+ * @adev: amdgpu_device pointer
  * @ring: ring we should submit the msg to
  * @handle: VCE session handle to use
- * @bo: amdgpu object for which we query the offset
  * @fence: optional fence to return
  *
  * Open up a stream for HW test
@@ -510,9 +509,9 @@ err:
 /**
  * amdgpu_vce_get_destroy_msg - generate a VCE destroy msg
  *
+ * @adev: amdgpu_device pointer
  * @ring: ring we should submit the msg to
  * @handle: VCE session handle to use
- * @direct: direct or delayed pool
  * @fence: optional fence to return
  *
  * Close up a stream for HW test or if userspace failed to do so
@@ -577,7 +576,6 @@ err:
  * amdgpu_vce_cs_validate_bo - make sure not to cross 4GB boundary
  *
  * @p: parser context
- * @ib_idx: indirect buffer to use
  * @lo: address of lower dword
  * @hi: address of higher dword
  * @size: minimum size
@@ -627,11 +625,9 @@ static int amdgpu_vce_validate_bo(struct amdgpu_cs_parser *p, uint32_t ib_idx,
  * amdgpu_vce_cs_reloc - command submission relocation
  *
  * @p: parser context
- * @ib_idx: indirect buffer to use
  * @lo: address of lower dword
  * @hi: address of higher dword
  * @size: minimum size
- * @index: bs/fb index
  *
  * Patch relocation inside command stream with real buffer address
  */
@@ -718,7 +714,7 @@ static int amdgpu_vce_validate_handle(struct amdgpu_cs_parser *p,
  * amdgpu_vce_cs_parse - parse and validate the command stream
  *
  * @p: parser context
- * @ib_idx: indirect buffer to use
+ *
  */
 int amdgpu_vce_ring_parse_cs(struct amdgpu_cs_parser *p, uint32_t ib_idx)
 {
@@ -954,7 +950,7 @@ out:
  * amdgpu_vce_cs_parse_vm - parse the command stream in VM mode
  *
  * @p: parser context
- * @ib_idx: indirect buffer to use
+ *
  */
 int amdgpu_vce_ring_parse_cs_vm(struct amdgpu_cs_parser *p, uint32_t ib_idx)
 {
@@ -1044,9 +1040,7 @@ out:
  * amdgpu_vce_ring_emit_ib - execute indirect buffer
  *
  * @ring: engine to use
- * @job: job to retrieve vmid from
  * @ib: the IB to execute
- * @flags: unused
  *
  */
 void amdgpu_vce_ring_emit_ib(struct amdgpu_ring *ring,
@@ -1064,9 +1058,7 @@ void amdgpu_vce_ring_emit_ib(struct amdgpu_ring *ring,
  * amdgpu_vce_ring_emit_fence - add a fence command to the ring
  *
  * @ring: engine to use
- * @addr: address
- * @seq: sequence number
- * @flags: fence related flags
+ * @fence: the fence
  *
  */
 void amdgpu_vce_ring_emit_fence(struct amdgpu_ring *ring, u64 addr, u64 seq,
@@ -1124,7 +1116,6 @@ int amdgpu_vce_ring_test_ring(struct amdgpu_ring *ring)
  * amdgpu_vce_ring_test_ib - test if VCE IBs are working
  *
  * @ring: the engine to test on
- * @timeout: timeout value in jiffies, or MAX_SCHEDULE_TIMEOUT
  *
  */
 int amdgpu_vce_ring_test_ib(struct amdgpu_ring *ring, long timeout)

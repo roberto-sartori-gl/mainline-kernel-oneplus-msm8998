@@ -718,8 +718,6 @@ static void dpu_kms_destroy(struct msm_kms *kms)
 	dpu_kms = to_dpu_kms(kms);
 
 	_dpu_kms_hw_destroy(dpu_kms);
-
-	msm_kms_destroy(&dpu_kms->base);
 }
 
 static void _dpu_kms_set_encoder_mode(struct msm_kms *kms,
@@ -1093,9 +1091,12 @@ static int dpu_bind(struct device *dev, struct device *master, void *data)
 		return PTR_ERR(dpu_kms->opp_table);
 	/* OPP table is optional */
 	ret = dev_pm_opp_of_add_table(dev);
-	if (ret && ret != -ENODEV) {
+	if (!ret) {
+		dpu_kms->has_opp_table = true;
+	} else if (ret != -ENODEV) {
 		dev_err(dev, "invalid OPP table in device tree\n");
-		goto put_clkname;
+		dev_pm_opp_put_clkname(dpu_kms->opp_table);
+		return ret;
 	}
 
 	mp = &dpu_kms->mp;
@@ -1107,11 +1108,7 @@ static int dpu_bind(struct device *dev, struct device *master, void *data)
 
 	platform_set_drvdata(pdev, dpu_kms);
 
-	ret = msm_kms_init(&dpu_kms->base, &kms_funcs);
-	if (ret) {
-		DPU_ERROR("failed to init kms, ret=%d\n", ret);
-		goto err;
-	}
+	msm_kms_init(&dpu_kms->base, &kms_funcs);
 	dpu_kms->dev = ddev;
 	dpu_kms->pdev = pdev;
 
@@ -1121,8 +1118,8 @@ static int dpu_bind(struct device *dev, struct device *master, void *data)
 	priv->kms = &dpu_kms->base;
 	return ret;
 err:
-	dev_pm_opp_of_remove_table(dev);
-put_clkname:
+	if (dpu_kms->has_opp_table)
+		dev_pm_opp_of_remove_table(dev);
 	dev_pm_opp_put_clkname(dpu_kms->opp_table);
 	return ret;
 }
@@ -1140,7 +1137,8 @@ static void dpu_unbind(struct device *dev, struct device *master, void *data)
 	if (dpu_kms->rpm_enabled)
 		pm_runtime_disable(&pdev->dev);
 
-	dev_pm_opp_of_remove_table(dev);
+	if (dpu_kms->has_opp_table)
+		dev_pm_opp_of_remove_table(dev);
 	dev_pm_opp_put_clkname(dpu_kms->opp_table);
 }
 
