@@ -1770,7 +1770,6 @@
 				<&gcc GCC_BIMC_GFX_CLK>,
 				<&gcc GCC_GPU_BIMC_GFX_CLK>,
 				<&gpucc RBCPR_CLK>,
-				<&gpucc GFX3D_ISENSE_CLK>,
 				<&gpucc GFX3D_CLK>;
 			clock-names = "iface",
 				"rbbmtimer",
