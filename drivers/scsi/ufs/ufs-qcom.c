@@ -1233,7 +1233,7 @@ static int ufs_qcom_clk_scale_notify(struct ufs_hba *hba,
 				    dev_req_params->pwr_rx,
 				    dev_req_params->hs_rate,
 				    false);
-		ufshcd_uic_hibern8_exit(hba);
+		err = ufshcd_uic_hibern8_exit(hba);
 	}
 
 out:
