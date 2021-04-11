@@ -25,6 +25,35 @@
 		bootargs = "earlycon clk_ignore_unused pd_ignore_unused"; // loglevel=10 drm.debug=15 debug
 	};
 
+	firmware {
+		android {
+			compatible = "android,firmware";
+			fstab {
+				compatible = "android,fstab";
+				vendor {
+					compatible = "android,vendor";
+					dev = "/dev/block/platform/soc@0/1da4000.ufshc/by-name/vendor";
+					type = "ext4";
+					mnt_flags = "ro,barrier=1,discard";
+					fsmgr_flags = "wait,verify";
+					status = "ok";
+				};
+				system {
+					compatible = "android,system";
+					dev = "/dev/block/platform/soc@0/1da4000.ufshc/by-name/system";
+					type = "ext4";
+					mnt_flags = "ro,barrier=1,discard";
+					fsmgr_flags = "wait,verify";
+					status = "ok";
+				};
+			};
+		};
+
+		scm {
+			compatible = "qcom,scm-msm8998", "qcom,scm";
+		};
+	};
+
 	gpio-hall-sensor {
 		compatible = "gpio-keys";
 
