@@ -194,7 +194,6 @@ static void _dpu_plane_calc_bw(struct drm_plane *plane,
 	else
 		do_div(plane_prefill_bw, hw_latency_lines);
 
-
 	pstate->plane_fetch_bw = max(plane_bw, plane_prefill_bw);
 }
 
