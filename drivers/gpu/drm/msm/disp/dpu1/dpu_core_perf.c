@@ -220,7 +220,7 @@ static int _dpu_core_perf_crtc_update_bus(struct dpu_kms *kms,
 	u64 avg_bw;
 
 	if (!kms->num_paths)
-		return -EINVAL;
+		return 0;
 
 	drm_for_each_crtc(tmp_crtc, crtc->dev) {
 		if (tmp_crtc->enabled &&
