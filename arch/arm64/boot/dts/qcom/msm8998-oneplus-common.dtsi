@@ -645,6 +645,12 @@
 	};
 };
 
+&pmi8998_haptics {
+	status = "okay";
+	// This is the LRA resonant frequency and is device specific
+	qcom,wave-play-rate-us = <4255>; // 1/4255us = 235.017626322 Hz - for OnePlus 6, we'll need to check on the OnePlus 5
+};
+
 &pcie0 {
 	/* This PCIe controller is not used on OnePlus devices */
 	status = "disabled";
