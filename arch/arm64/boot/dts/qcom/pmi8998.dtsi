@@ -60,5 +60,84 @@
 			// qcom,brake-pattern = <0x3 0x3 0x3 0x3>;
 		};
 
+		pmi8998_pwm: pwm@b100 {
+			compatible = "qcom,pwm-lpg";
+			reg = <0xb100 0x100>, <0xb042 0x7e>;
+			reg-names = "lpg-base", "lut-base";
+			qcom,num-lpg-channels = <4>;
+			#pwm-cells = <2>;
+			status = "okay";
+			qcom,lut-patterns = <0 10 20 30 40 50 60 70 80 90 100
+						90 80 70 60 50 40 30 20 10 0>;
+
+			lpg1 {
+				qcom,lpg-chan-id = <1>;
+				qcom,ramp-step-ms = <100>;
+				qcom,ramp-pause-hi-count = <2>;
+				qcom,ramp-pause-lo-count = <2>;
+				qcom,ramp-low-index = <0>;
+				qcom,ramp-high-index = <20>;
+				qcom,ramp-from-low-to-high;
+				qcom,ramp-pattern-repeat;
+			};
+
+			lpg2 {
+				qcom,lpg-chan-id = <2>;
+				qcom,ramp-step-ms = <100>;
+				qcom,ramp-pause-hi-count = <2>;
+				qcom,ramp-pause-lo-count = <2>;
+				qcom,ramp-low-index = <0>;
+				qcom,ramp-high-index = <20>;
+				qcom,ramp-from-low-to-high;
+				qcom,ramp-pattern-repeat;
+			};
+
+			lpg3 {
+				qcom,lpg-chan-id = <3>;
+				qcom,ramp-step-ms = <100>;
+				qcom,ramp-pause-hi-count = <2>;
+				qcom,ramp-pause-lo-count = <2>;
+				qcom,ramp-low-index = <0>;
+				qcom,ramp-high-index = <20>;
+				qcom,ramp-from-low-to-high;
+				qcom,ramp-pattern-repeat;
+			};
+
+			lpg4 {
+				qcom,lpg-chan-id = <4>;
+				qcom,ramp-step-ms = <100>;
+				qcom,ramp-pause-hi-count = <2>;
+				qcom,ramp-pause-lo-count = <2>;
+				qcom,ramp-low-index = <0>;
+				qcom,ramp-high-index = <20>;
+			};
+                };
+
+		pm8998_leds: leds@d000 {
+			compatible = "qcom,tri-led";
+			reg = <0xd000 0x100>;
+			label = "rgb";
+
+			blue {
+				label = "blue";
+				pwms = <&pmi8998_pwm 0 1000>;
+				led-sources = <2>;
+				linux,default-trigger = "battery-charging";
+			};
+
+			green {
+				label = "green";
+				pwms = <&pmi8998_pwm 1 1000>;
+				led-sources = <1>;
+				linux,default-trigger = "battery-full";
+			};
+
+			red {
+				label = "red";
+				pwms = <&pmi8998_pwm 2 1000>;
+				led-sources = <0>;
+				linux,default-trigger = "boot-indication";
+			};
+		};
 	};
 };
