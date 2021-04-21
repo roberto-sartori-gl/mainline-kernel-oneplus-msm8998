@@ -74,6 +74,18 @@ struct pwm_state {
 	bool enabled;
 };
 
+/*
+ * struct pwm_output_pattern - PWM duty pattern for MODULATED duty type
+ * @duty_pattern: PWM duty cycles in the pattern for duty modulation
+ * @num_entries: number of entries in the pattern
+ * @cycles_per_duty: number of PWM period cycles an entry stays at
+ */
+struct pwm_output_pattern {
+	unsigned int *duty_pattern;
+	unsigned int num_entries;
+	unsigned int cycles_per_duty;
+};
+
 /**
  * struct pwm_device - PWM channel object
  * @label: name of the PWM device
@@ -125,7 +137,24 @@ static inline void pwm_set_period(struct pwm_device *pwm, u64 period)
 		pwm->state.period = period;
 }
 
+static inline void pwm_set_period_extend(struct pwm_device *pwm, u64 period)
+{
+	if (pwm)
+		pwm->state.period = period;
+}
+
 static inline u64 pwm_get_period(const struct pwm_device *pwm)
+{
+	struct pwm_state state;
+
+	pwm_get_state(pwm, &state);
+		if (state.period > UINT_MAX)
+		pr_warn("PWM period %llu is truncated\n", state.period);
+
+	return (unsigned int)state.period;
+}
+
+static inline u64 pwm_get_period_extend(const struct pwm_device *pwm)
 {
 	struct pwm_state state;
 
@@ -294,10 +323,17 @@ struct pwm_ops {
 	/* Only used by legacy drivers */
 	int (*config)(struct pwm_chip *chip, struct pwm_device *pwm,
 		      int duty_ns, int period_ns);
+	int (*config_extend)(struct pwm_chip *chip, struct pwm_device *pwm,
+		      u64 duty_ns, u64 period_ns);
 	int (*set_polarity)(struct pwm_chip *chip, struct pwm_device *pwm,
 			    enum pwm_polarity polarity);
 	int (*enable)(struct pwm_chip *chip, struct pwm_device *pwm);
 	void (*disable)(struct pwm_chip *chip, struct pwm_device *pwm);
+	int (*set_output_type)(struct pwm_chip *chip, struct pwm_device *pwm,
+			    enum pwm_output_type output_type);
+	int (*set_output_pattern)(struct pwm_chip *chip,
+			    struct pwm_device *pwm,
+			    struct pwm_output_pattern *output_pattern);
 };
 
 /**
