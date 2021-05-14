@@ -66,8 +66,6 @@
  * RX endpoint on the AP receiving data from a TX endpoint on the modem.
  */
 
-/* The name of the GSI firmware file relative to /lib/firmware */
-#define IPA_FWS_PATH		"ipa_fws.mdt"
 #define IPA_PAS_ID		15
 
 /* Shift of 19.2 MHz timestamp to achieve lower resolution timestamps */
@@ -228,8 +226,8 @@ static void ipa_hardware_config_comp(struct ipa *ipa)
 {
 	u32 val;
 
-	/* Nothing to configure for IPA v3.5.1 */
-	if (ipa->version == IPA_VERSION_3_5_1)
+	/* Nothing to configure for IPA v3.5.1 and below */
+	if (ipa->version <= IPA_VERSION_3_5_1)
 		return;
 
 	val = ioread32(ipa->reg_virt + IPA_REG_COMP_CFG_OFFSET);
@@ -276,6 +274,7 @@ static void ipa_hardware_config_qsb(struct ipa *ipa)
 
 	max1 = 12;
 	switch (version) {
+	case IPA_VERSION_3_1:
 	case IPA_VERSION_3_5_1:
 		max0 = 8;
 		break;
@@ -404,6 +403,9 @@ static void ipa_hardware_config(struct ipa *ipa)
 		/* Enable open global clocks (not needed for IPA v4.5) */
 		val = GLOBAL_FMASK;
 		val |= GLOBAL_2X_CLK_FMASK;
+		if (version == IPA_VERSION_3_1)
+			val |= MISC_FMASK;
+
 		iowrite32(val, ipa->reg_virt + IPA_REG_CLKON_CFG_OFFSET);
 
 		/* Disable PA mask to allow HOLB drop */
@@ -581,10 +583,10 @@ ipa_resource_config(struct ipa *ipa, const struct ipa_resource_data *data)
 		return -EINVAL;
 
 	for (i = 0; i < data->resource_src_count; i++)
-		ipa_resource_config_src(ipa, data->resource_src);
+		ipa_resource_config_src(ipa, &data->resource_src[i]);
 
 	for (i = 0; i < data->resource_dst_count; i++)
-		ipa_resource_config_dst(ipa, data->resource_dst);
+		ipa_resource_config_dst(ipa, &data->resource_dst[i]);
 
 	return 0;
 }
@@ -665,6 +667,7 @@ static void ipa_deconfig(struct ipa *ipa)
 
 static int ipa_firmware_load(struct device *dev)
 {
+	const char* fw_name;
 	const struct firmware *fw;
 	struct device_node *node;
 	struct resource res;
@@ -686,9 +689,14 @@ static int ipa_firmware_load(struct device *dev)
 		return ret;
 	}
 
-	ret = request_firmware(&fw, IPA_FWS_PATH, dev);
+	fw_name = "ipa_fws.mdt";
+	ret = of_property_read_string(dev->of_node, "firmware-name", &fw_name);
+	if (ret < 0 && ret != -EINVAL)
+		return ret;
+
+	ret = request_firmware(&fw, fw_name, dev);
 	if (ret) {
-		dev_err(dev, "error %d requesting \"%s\"\n", ret, IPA_FWS_PATH);
+		dev_err(dev, "error %d requesting \"%s\"\n", ret, fw_name);
 		return ret;
 	}
 
@@ -701,13 +709,13 @@ static int ipa_firmware_load(struct device *dev)
 		goto out_release_firmware;
 	}
 
-	ret = qcom_mdt_load(dev, fw, IPA_FWS_PATH, IPA_PAS_ID,
+	ret = qcom_mdt_load(dev, fw, fw_name, IPA_PAS_ID,
 			    virt, phys, size, NULL);
 	if (ret)
-		dev_err(dev, "error %d loading \"%s\"\n", ret, IPA_FWS_PATH);
+		dev_err(dev, "error %d loading \"%s\"\n", ret, fw_name);
 	else if ((ret = qcom_scm_pas_auth_and_reset(IPA_PAS_ID)))
 		dev_err(dev, "error %d authenticating \"%s\"\n", ret,
-			IPA_FWS_PATH);
+			fw_name);
 
 	memunmap(virt);
 out_release_firmware:
@@ -717,6 +725,10 @@ out_release_firmware:
 }
 
 static const struct of_device_id ipa_match[] = {
+	{
+		.compatible	= "qcom,msm8998-ipa",
+		.data		= &ipa_data_msm8998,
+	},
 	{
 		.compatible	= "qcom,sdm845-ipa",
 		.data		= &ipa_data_sdm845,
